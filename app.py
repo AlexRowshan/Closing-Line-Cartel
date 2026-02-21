@@ -112,8 +112,8 @@ async def analyze(request: Request):
                 })
                 return
 
-            # --- Step 4: Build prompt (top PROMPT_MAX_PLAYS only) ---
-            prompt_plays = plays[:PROMPT_MAX_PLAYS]
+            # --- Step 4: Build prompt (top PROMPT_MAX_PLAYS with a Bovada line only) ---
+            prompt_plays = [p for p in plays if p.bovada_line][:PROMPT_MAX_PLAYS]
             yield _sse_event("progress", {
                 "message": (
                     f"Found {len(plays)} sharp play(s). "
@@ -126,8 +126,15 @@ async def analyze(request: Request):
                 yield _sse_event("error", {"message": f"Prompt build failed: {e}"})
                 return
 
+            prompt_play_ids = {id(p) for p in prompt_plays}
+            plays_dicts = []
+            for p in plays:
+                d = p.to_dict()
+                d["in_prompt"] = id(p) in prompt_play_ids
+                plays_dicts.append(d)
+
             yield _sse_event("result", {
-                "plays": [p.to_dict() for p in plays],
+                "plays": plays_dicts,
                 "prompt_play_count": len(prompt_plays),
                 "prompt": prompt,
                 "message": f"Done. {len(plays)} play(s) found, top {len(prompt_plays)} in prompt.",
