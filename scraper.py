@@ -26,6 +26,16 @@ USER_AGENT = (
     "Chrome/120.0.0.0 Safari/537.36"
 )
 
+# Flags that prevent Chromium from crashing in memory-constrained Docker containers.
+# --disable-dev-shm-usage is the most critical: without it Chromium writes to /dev/shm
+# which is capped at 64 MB in most containers, causing "Target crashed" on heavy pages.
+BROWSER_ARGS = [
+    "--disable-dev-shm-usage",
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-gpu",
+]
+
 
 async def _new_page(browser) -> Page:
     context = await browser.new_context(
@@ -46,7 +56,7 @@ async def scrape_vsin() -> tuple[str, str]:
     and Circa Sports betting splits tabs.
     """
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        browser = await p.chromium.launch(headless=True, args=BROWSER_ARGS)
         page = await _new_page(browser)
 
         try:
@@ -95,34 +105,35 @@ async def scrape_vsin() -> tuple[str, str]:
     return dk_text, circa_text
 
 
-async def _scrape_oddstrader_page(url: str) -> str:
-    """Load a single OddsTrader URL and return its innerText."""
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await _new_page(browser)
+async def _fetch_oddstrader_page(browser, url: str) -> str:
+    """Load a single OddsTrader URL using an existing browser instance."""
+    page = await _new_page(browser)
+    try:
+        await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        # Wait for game rows (win-loss records indicate data has loaded)
         try:
-            await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-            # Wait for game rows (win-loss records indicate data has loaded)
-            try:
-                await page.wait_for_selector("text=/\\d+-\\d+/", timeout=15000)
-            except PlaywrightTimeoutError:
-                pass
-            await asyncio.sleep(2)
-            return await _get_inner_text(page)
-        finally:
-            await browser.close()
+            await page.wait_for_selector("text=/\\d+-\\d+/", timeout=15000)
+        except PlaywrightTimeoutError:
+            pass
+        await asyncio.sleep(2)
+        return await _get_inner_text(page)
+    finally:
+        await page.close()
 
 
 async def scrape_oddstrader() -> tuple[str, str]:
     """
     Returns (spreads_text, totals_text): raw innerText from OddsTrader's
-    NCAAB spreads and totals pages (each has its own direct URL).
-    Both pages are fetched concurrently.
+    NCAAB spreads and totals pages.
+    Both pages share one browser instance to minimise memory usage.
     """
-    spreads_text, totals_text = await asyncio.gather(
-        _scrape_oddstrader_page(ODDSTRADER_SPREADS_URL),
-        _scrape_oddstrader_page(ODDSTRADER_TOTALS_URL),
-    )
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True, args=BROWSER_ARGS)
+        try:
+            spreads_text = await _fetch_oddstrader_page(browser, ODDSTRADER_SPREADS_URL)
+            totals_text = await _fetch_oddstrader_page(browser, ODDSTRADER_TOTALS_URL)
+        finally:
+            await browser.close()
     return spreads_text, totals_text
 
 
