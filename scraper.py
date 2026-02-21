@@ -34,7 +34,18 @@ BROWSER_ARGS = [
     "--no-sandbox",
     "--disable-setuid-sandbox",
     "--disable-gpu",
+    "--disable-extensions",
+    "--disable-background-networking",
+    "--disable-default-apps",
+    "--disable-sync",
+    "--no-first-run",
+    "--mute-audio",
 ]
+
+# Resource types to block on OddsTrader.
+# Keep this conservative: OddsTrader appears to depend on some visual assets for
+# complete sportsbook labeling (e.g., Bovada rows).
+_BLOCK_TYPES = {"media", "font"}
 
 
 async def _new_page(browser) -> Page:
@@ -109,6 +120,13 @@ async def _fetch_oddstrader_page(browser, url: str) -> str:
     """Load a single OddsTrader URL using an existing browser instance."""
     page = await _new_page(browser)
     try:
+        # Block visual-heavy resources; we only need text data from the DOM.
+        await page.route(
+            "**/*",
+            lambda route: route.abort()
+            if route.request.resource_type in _BLOCK_TYPES
+            else route.continue_(),
+        )
         await page.goto(url, wait_until="domcontentloaded", timeout=30000)
         # Wait for game rows (win-loss records indicate data has loaded)
         try:
