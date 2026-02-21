@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sharp CBB Analyzer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d0f14;
+      --surface: #161b26;
+      --surface2: #1e2636;
+      --border: #2a3447;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --green: #22c55e;
+      --yellow: #eab308;
+      --red: #ef4444;
+      --text: #e2e8f0;
+      --muted: #7c8fa6;
+      --mono: 'Courier New', Courier, monospace;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      padding: 0 1rem 4rem;
+    }
+
+    header {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 2rem 0 1.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    header h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    header p {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-top: 0.3rem;
+    }
+
+    main {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding-top: 2rem;
+    }
+
+    /* ── Button ── */
+    #run-btn {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 0.75rem 1.6rem;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    #run-btn:hover:not(:disabled) { background: var(--accent-hover); }
+
+    #run-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+    .spinner.active { display: block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Progress log ── */
+    #log-wrap {
+      margin-top: 1.5rem;
+      display: none;
+    }
+
+    #log-wrap.visible { display: block; }
+
+    #log {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      color: var(--muted);
+      max-height: 180px;
+      overflow-y: auto;
+    }
+
+    .log-line { margin-bottom: 0.3rem; }
+    .log-line.ok { color: var(--green); }
+    .log-line.err { color: var(--red); }
+    .log-line.info { color: var(--text); }
+
+    /* ── Error banner ── */
+    #error-banner {
+      display: none;
+      background: rgba(239,68,68,0.1);
+      border: 1px solid var(--red);
+      border-radius: 8px;
+      padding: 1rem 1.2rem;
+      color: var(--red);
+      margin-top: 1.5rem;
+      font-size: 0.9rem;
+    }
+    #error-banner.visible { display: block; }
+
+    /* ── Results ── */
+    #results {
+      display: none;
+      margin-top: 2rem;
+    }
+    #results.visible { display: block; }
+
+    .section-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.8rem;
+    }
+
+    /* Plays table */
+    .plays-table-wrap {
+      overflow-x: auto;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+
+    thead {
+      background: var(--surface2);
+    }
+
+    th {
+      text-align: left;
+      padding: 0.6rem 0.7rem;
+      font-weight: 600;
+      color: var(--muted);
+      font-size: 0.75rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 0.65rem 0.7rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+
+    .tier-badge {
+      display: inline-block;
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    .tier-1 { background: rgba(34,197,94,0.15); color: var(--green); }
+    .tier-2 { background: rgba(59,130,246,0.15); color: var(--accent); }
+    .tier-3 { background: rgba(234,179,8,0.15); color: var(--yellow); }
+    .tier-4 { background: rgba(126,126,126,0.15); color: var(--muted); }
+
+    .diff-pill {
+      display: inline-block;
+      background: rgba(59,130,246,0.12);
+      color: var(--accent);
+      border-radius: 4px;
+      padding: 0.1rem 0.45rem;
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+
+    .bovada-best {
+      color: var(--green);
+      font-size: 0.7rem;
+      margin-left: 0.3rem;
+    }
+
+    /* In-prompt row highlight */
+    tr.in-prompt td { background: rgba(59,130,246,0.04); }
+    .in-prompt-badge {
+      display: inline-block;
+      background: rgba(59,130,246,0.18);
+      color: var(--accent);
+      border-radius: 4px;
+      padding: 0.12rem 0.45rem;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+    }
+
+    /* Confidence score */
+    .score-cell {
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Separator row between prompt plays and additional plays */
+    tr.separator td {
+      background: var(--surface2);
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      text-align: center;
+      padding: 0.4rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* Pagination */
+    .pagination {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-top: 0.9rem;
+    }
+
+    .page-btn {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.35rem 0.8rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .page-btn:hover:not(:disabled) { background: var(--border); }
+    .page-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    .page-info {
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    /* Prompt */
+    #prompt-section {
+      margin-top: 2rem;
+    }
+
+    .prompt-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.8rem;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    #copy-btn {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.4rem 0.9rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    #copy-btn:hover { background: var(--border); }
+    #copy-btn.copied { color: var(--green); border-color: var(--green); }
+
+    #prompt-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.2rem;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      line-height: 1.55;
+      color: var(--text);
+      width: 100%;
+      min-height: 320px;
+      max-height: 480px;
+      resize: vertical;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    /* No-data message */
+    #no-data {
+      display: none;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.5rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-top: 1.5rem;
+      text-align: center;
+    }
+    #no-data.visible { display: block; }
+
+    /* Run Again */
+    #run-again-btn {
+      display: none;
+      margin-top: 1.5rem;
+      background: transparent;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      padding: 0.55rem 1.2rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    #run-again-btn:hover { background: rgba(59,130,246,0.08); }
+    #run-again-btn.visible { display: inline-block; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Sharp CBB Analyzer</h1>
+  <p>Fetches VSIN splits + OddsTrader Bovada lines, filters for sharp plays, and builds your Gemini prompt.</p>
+</header>
+
+<main>
+  <button id="run-btn" onclick="runAnalysis()">
+    <div class="spinner" id="spinner"></div>
+    <span id="btn-label">Run Analysis</span>
+  </button>
+
+  <div id="log-wrap">
+    <div id="log"></div>
+  </div>
+
+  <div id="error-banner"></div>
+  <div id="no-data"></div>
+
+  <div id="results">
+    <p class="section-title" id="results-title">Sharp Plays</p>
+
+    <div class="plays-table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Game</th>
+            <th>Market</th>
+            <th>Sharp Side</th>
+            <th>Handle%</th>
+            <th>Bets%</th>
+            <th>Diff</th>
+            <th>Bovada Line</th>
+            <th>Conviction</th>
+            <th title="(5 - tier) × 30 + diff — higher is better">Score</th>
+            <th>Prompt</th>
+          </tr>
+        </thead>
+        <tbody id="plays-tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="pagination" id="pagination" style="display:none">
+      <button class="page-btn" id="prev-btn" onclick="changePage(-1)">← Prev</button>
+      <span class="page-info" id="page-info"></span>
+      <button class="page-btn" id="next-btn" onclick="changePage(1)">Next →</button>
+    </div>
+
+    <div id="prompt-section">
+      <div class="prompt-header">
+        <p class="section-title" style="margin-bottom:0">Gemini Deep Research Prompt</p>
+        <button id="copy-btn" onclick="copyPrompt()">Copy Prompt</button>
+      </div>
+      <textarea id="prompt-box" readonly></textarea>
+    </div>
+  </div>
+
+  <button id="run-again-btn" onclick="resetAndRun()">Run Again</button>
+</main>
+
+<script>
+  const TIER_LABELS = {
+    1: 'DK + Circa + Bovada Best',
+    2: 'DK + Circa',
+    3: 'DK + Bovada Best',
+    4: 'DK Sharp Only',
+  };
+
+  const TIER_CLASSES = { 1: 'tier-1', 2: 'tier-2', 3: 'tier-3', 4: 'tier-4' };
+  const PAGE_SIZE = 10;
+
+  let eventSource = null;
+  let _allPlays = [];
+  let _promptCount = 0;
+  let _currentPage = 0;
+
+  function log(msg, cls = '') {
+    const wrap = document.getElementById('log-wrap');
+    const logEl = document.getElementById('log');
+    wrap.classList.add('visible');
+    const line = document.createElement('div');
+    line.className = `log-line ${cls}`;
+    line.textContent = `> ${msg}`;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('error-banner');
+    el.textContent = msg;
+    el.classList.add('visible');
+    setRunning(false);
+  }
+
+  function setRunning(running) {
+    const btn = document.getElementById('run-btn');
+    const spinner = document.getElementById('spinner');
+    const label = document.getElementById('btn-label');
+    btn.disabled = running;
+    spinner.classList.toggle('active', running);
+    label.textContent = running ? 'Analyzing...' : 'Run Analysis';
+  }
+
+  function runAnalysis() {
+    // Reset UI
+    document.getElementById('error-banner').classList.remove('visible');
+    document.getElementById('no-data').classList.remove('visible');
+    document.getElementById('results').classList.remove('visible');
+    document.getElementById('run-again-btn').classList.remove('visible');
+    document.getElementById('plays-tbody').innerHTML = '';
+    document.getElementById('prompt-box').value = '';
+    document.getElementById('log').innerHTML = '';
+    document.getElementById('copy-btn').classList.remove('copied');
+    document.getElementById('copy-btn').textContent = 'Copy Prompt';
+    document.getElementById('pagination').style.display = 'none';
+    _allPlays = [];
+    _promptCount = 0;
+    _currentPage = 0;
+
+    setRunning(true);
+
+    if (eventSource) { eventSource.close(); }
+
+    eventSource = new EventSource('/api/analyze');
+
+    eventSource.addEventListener('progress', (e) => {
+      const data = JSON.parse(e.data);
+      log(data.message, 'info');
+    });
+
+    eventSource.addEventListener('result', (e) => {
+      const data = JSON.parse(e.data);
+      eventSource.close();
+      setRunning(false);
+
+      if (!data.plays || data.plays.length === 0) {
+        const nd = document.getElementById('no-data');
+        nd.textContent = data.message || 'No sharp plays found. Try again closer to game time.';
+        nd.classList.add('visible');
+        log('No plays found.', 'err');
+        document.getElementById('run-again-btn').classList.add('visible');
+        return;
+      }
+
+      const total = data.plays.length;
+      const inPrompt = data.prompt_play_count || Math.min(total, 5);
+      log(`${total} sharp play(s) found. Top ${inPrompt} in Gemini prompt.`, 'ok');
+      document.getElementById('results-title').textContent =
+        `Sharp Plays (${total} found — top ${inPrompt} in prompt)`;
+      _allPlays = data.plays;
+      _promptCount = inPrompt;
+      _currentPage = 0;
+      renderPage();
+      document.getElementById('prompt-box').value = data.prompt;
+      document.getElementById('results').classList.add('visible');
+      document.getElementById('run-again-btn').classList.add('visible');
+    });
+
+    eventSource.addEventListener('error', (e) => {
+      let msg = 'An unknown error occurred.';
+      try {
+        const data = JSON.parse(e.data);
+        msg = data.message || msg;
+      } catch (_) {}
+      showError(msg);
+      log(msg, 'err');
+      if (eventSource) eventSource.close();
+      document.getElementById('run-again-btn').classList.add('visible');
+    });
+
+    eventSource.onerror = () => {
+      if (eventSource.readyState === EventSource.CLOSED) return;
+      showError('Connection lost. The server may still be running the analysis.');
+      eventSource.close();
+      setRunning(false);
+      document.getElementById('run-again-btn').classList.add('visible');
+    };
+  }
+
+  function renderPage() {
+    const tbody = document.getElementById('plays-tbody');
+    tbody.innerHTML = '';
+
+    const COLS = 11;
+    const total = _allPlays.length;
+    const totalPages = Math.ceil(total / PAGE_SIZE);
+    const start = _currentPage * PAGE_SIZE;
+    const end = Math.min(start + PAGE_SIZE, total);
+    const pageSlice = _allPlays.slice(start, end);
+
+    pageSlice.forEach((play, localIdx) => {
+      const globalIdx = start + localIdx;
+
+      // Separator row: insert if this page contains the boundary between
+      // prompt plays and additional plays (and there are additional plays at all)
+      if (globalIdx === _promptCount && total > _promptCount) {
+        const sep = `<tr class="separator"><td colspan="${COLS}">↓ Additional plays (not in prompt)</td></tr>`;
+        tbody.insertAdjacentHTML('beforeend', sep);
+      }
+
+      const inPrompt = globalIdx < _promptCount;
+      const tier = play.conviction_tier;
+      const tierLabel = TIER_LABELS[tier] || `Tier ${tier}`;
+      const tierClass = TIER_CLASSES[tier] || 'tier-4';
+
+      let bovadaCell = play.bovada_line
+        ? `${play.bovada_direction ? play.bovada_direction.charAt(0).toUpperCase() + play.bovada_direction.slice(1) + ' ' : ''}${play.bovada_line} (${play.bovada_odds})`
+        : '<span style="color:var(--muted)">N/A</span>';
+
+      if (play.is_bovada_best_price) {
+        bovadaCell += ' <span class="bovada-best">★ BEST</span>';
+      }
+
+      const matchup = `${play.away} @ ${play.home}`;
+      const promptBadge = inPrompt
+        ? '<span class="in-prompt-badge">IN PROMPT</span>'
+        : '<span style="color:var(--muted);font-size:0.75rem">—</span>';
+
+      const row = `
+        <tr class="${inPrompt ? 'in-prompt' : ''}">
+          <td>${globalIdx + 1}</td>
+          <td>${escHtml(matchup)}</td>
+          <td>${escHtml(play.market)}</td>
+          <td>${escHtml(play.side)}</td>
+          <td>${play.handle_pct}%</td>
+          <td>${play.bets_pct}%</td>
+          <td><span class="diff-pill">+${play.diff}%</span></td>
+          <td>${bovadaCell}</td>
+          <td><span class="tier-badge ${tierClass}">${escHtml(tierLabel)}</span></td>
+          <td class="score-cell">${play.confidence_score}</td>
+          <td>${promptBadge}</td>
+        </tr>`;
+      tbody.insertAdjacentHTML('beforeend', row);
+    });
+
+    // Update pagination controls
+    const pagination = document.getElementById('pagination');
+    if (total > PAGE_SIZE) {
+      pagination.style.display = 'flex';
+      document.getElementById('prev-btn').disabled = _currentPage === 0;
+      document.getElementById('next-btn').disabled = _currentPage >= totalPages - 1;
+      document.getElementById('page-info').textContent =
+        `Page ${_currentPage + 1} of ${totalPages}  (plays ${start + 1}–${end} of ${total})`;
+    } else {
+      pagination.style.display = 'none';
+    }
+  }
+
+  function changePage(dir) {
+    const total = _allPlays.length;
+    const totalPages = Math.ceil(total / PAGE_SIZE);
+    _currentPage = Math.max(0, Math.min(_currentPage + dir, totalPages - 1));
+    renderPage();
+    // Scroll table back into view
+    document.getElementById('plays-tbody').closest('.plays-table-wrap').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function escHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  async function copyPrompt() {
+    const box = document.getElementById('prompt-box');
+    const btn = document.getElementById('copy-btn');
+    try {
+      await navigator.clipboard.writeText(box.value);
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = 'Copy Prompt';
+        btn.classList.remove('copied');
+      }, 2000);
+    } catch (_) {
+      box.select();
+      document.execCommand('copy');
+    }
+  }
+
+  function resetAndRun() {
+    document.getElementById('run-again-btn').classList.remove('visible');
+    runAnalysis();
+  }
+</script>
+</body>
+</html>
