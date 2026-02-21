@@ -116,13 +116,22 @@ def _normalize_team(name: str) -> str:
 
 
 def _teams_match(vsin_name: str, oddstrader_name: str) -> bool:
-    """Fuzzy match: normalized equality OR one is a substring of the other."""
+    """
+    Fuzzy match: normalized equality OR word-level prefix match.
+
+    Prefix match handles "Penn State" vs "Penn State Nittany Lions" (OddsTrader
+    includes mascot names) while rejecting false positives like "Arizona" vs
+    "N Arizona" where the shorter name appears mid-string in the longer one.
+    """
     a = _normalize_team(vsin_name)
     b = _normalize_team(oddstrader_name)
     if a == b:
         return True
-    # Substring match (handles "Penn State" vs "Penn State Nittany Lions" etc.)
-    if a in b or b in a:
+    a_words = a.split()
+    b_words = b.split()
+    # The shorter token list must match the beginning of the longer token list
+    shorter, longer = (a_words, b_words) if len(a_words) <= len(b_words) else (b_words, a_words)
+    if shorter and longer[:len(shorter)] == shorter:
         return True
     return False
 
