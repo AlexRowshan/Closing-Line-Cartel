@@ -191,10 +191,38 @@
       letter-spacing: 0.04em;
       white-space: nowrap;
     }
-    .tier-1 { background: rgba(34,197,94,0.15); color: var(--green); }
-    .tier-2 { background: rgba(59,130,246,0.15); color: var(--accent); }
-    .tier-3 { background: rgba(234,179,8,0.15); color: var(--yellow); }
-    .tier-4 { background: rgba(126,126,126,0.15); color: var(--muted); }
+    .tier-1 { background: rgba(34,197,94,0.15);  color: var(--green); }
+    .tier-2 { background: rgba(6,182,212,0.15);  color: #06b6d4; }
+    .tier-3 { background: rgba(59,130,246,0.15); color: var(--accent); }
+    .tier-4 { background: rgba(234,179,8,0.15);  color: var(--yellow); }
+    .tier-5 { background: rgba(168,85,247,0.15); color: #a855f7; }
+    .tier-6 { background: rgba(126,126,126,0.15);color: var(--muted); }
+
+    /* Tier legend */
+    #tier-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 1.2rem;
+      margin-bottom: 1rem;
+      padding: 0.75rem 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    #tier-legend .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-size: 0.78rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    #tier-legend .legend-num {
+      font-weight: 700;
+      color: var(--muted);
+      font-size: 0.72rem;
+      min-width: 1rem;
+    }
 
     .diff-pill {
       display: inline-block;
@@ -365,6 +393,15 @@
   <div id="results">
     <p class="section-title" id="results-title">Sharp Plays</p>
 
+    <div id="tier-legend">
+      <div class="legend-item"><span class="legend-num">T1</span><span class="tier-badge tier-1">DK + Circa + Bovada Best</span></div>
+      <div class="legend-item"><span class="legend-num">T2</span><span class="tier-badge tier-2">Circa + Bovada Best</span></div>
+      <div class="legend-item"><span class="legend-num">T3</span><span class="tier-badge tier-3">DK + Circa</span></div>
+      <div class="legend-item"><span class="legend-num">T4</span><span class="tier-badge tier-4">DK + Bovada Best</span></div>
+      <div class="legend-item"><span class="legend-num">T5</span><span class="tier-badge tier-5">Circa Only</span></div>
+      <div class="legend-item"><span class="legend-num">T6</span><span class="tier-badge tier-6">DK Only</span></div>
+    </div>
+
     <div class="plays-table-wrap">
       <table>
         <thead>
@@ -407,12 +444,14 @@
 <script>
   const TIER_LABELS = {
     1: 'DK + Circa + Bovada Best',
-    2: 'DK + Circa',
-    3: 'DK + Bovada Best',
-    4: 'DK Sharp Only',
+    2: 'Circa + Bovada Best',
+    3: 'DK + Circa',
+    4: 'DK + Bovada Best',
+    5: 'Circa Only',
+    6: 'DK Only',
   };
 
-  const TIER_CLASSES = { 1: 'tier-1', 2: 'tier-2', 3: 'tier-3', 4: 'tier-4' };
+  const TIER_CLASSES = { 1: 'tier-1', 2: 'tier-2', 3: 'tier-3', 4: 'tier-4', 5: 'tier-5', 6: 'tier-6' };
   const PAGE_SIZE = 10;
 
   let eventSource = null;

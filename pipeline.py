@@ -132,10 +132,11 @@ def _teams_match(vsin_name: str, oddstrader_name: str) -> bool:
 # ---------------------------------------------------------------------------
 
 def _alert_key(alert: SplitAlert) -> tuple:
-    away = alert.away_team.lower()
-    home = alert.home_team.lower()
+    away = _clean_team_name(alert.away_team).lower()
+    home = _clean_team_name(alert.home_team).lower()
     if alert.market == "Spread":
-        team = re.sub(r"\s+[+-][\d.]+$", "", alert.side).strip().lower()
+        raw_team = re.sub(r"\s+[+-][\d.]+$", "", alert.side).strip()
+        team = _clean_team_name(raw_team).lower()
         return (away, home, "spread", team)
     else:
         direction = "over" if alert.side.lower().startswith("over") else "under"
@@ -249,6 +250,15 @@ def _find_overlap(
     return [a for a in dk_alerts if _alert_key(a) in circa_keys]
 
 
+def _find_circa_only(
+    dk_alerts: list[SplitAlert],
+    circa_alerts: list[SplitAlert],
+) -> list[SplitAlert]:
+    """Return Circa alerts that do NOT appear in DK alerts."""
+    dk_keys = {_alert_key(a) for a in dk_alerts}
+    return [a for a in circa_alerts if _alert_key(a) not in dk_keys]
+
+
 # ---------------------------------------------------------------------------
 # Main pipeline
 # ---------------------------------------------------------------------------
@@ -256,13 +266,22 @@ def _find_overlap(
 def _confidence_score(tier: int, diff: int) -> int:
     """
     Composite score for ranking plays.
-    Formula: (5 - tier) * 30 + diff
-      Tier 1 base = 120, Tier 2 = 90, Tier 3 = 60, Tier 4 = 30
-    A tier gap of 30 means a lower-tier play needs a 30%+ higher diff
-    to overtake a higher-tier play — rewarding multi-book confirmation
-    while still surfacing extreme single-book signals.
+    Raw formula: (7 - tier) * 25 + diff
+      Tier 1 base = 150, Tier 2 = 125, Tier 3 = 100,
+      Tier 4 = 75,  Tier 5 = 50,  Tier 6 = 25
+
+    We then linearly rescale to a 25-100 range using:
+      - raw floor 50  (Tier 6 base 25 + minimum qualifying diff 25)
+      - raw cap 213   (Tier 1 base 150 + elite diff ~63)
+    Any score above the cap is clamped at 100.
     """
-    return (5 - tier) * 30 + diff
+    raw_score = (7 - tier) * 25 + diff
+    min_raw_score = 50   # Tier 6 (25) + threshold diff 25
+    max_raw_score = 213  # Tier 1 (150) + elite diff ~63
+    scaled = round(
+        25 + ((raw_score - min_raw_score) / (max_raw_score - min_raw_score)) * 75
+    )
+    return max(25, min(100, scaled))
 
 
 def run_pipeline(
@@ -291,6 +310,8 @@ def run_pipeline(
     dk_alerts.sort(key=lambda a: a.diff, reverse=True)
 
     dk_circa_overlap = _find_overlap(dk_alerts, circa_alerts)
+    circa_only = _find_circa_only(dk_alerts, circa_alerts)
+    circa_only.sort(key=lambda a: a.diff, reverse=True)
 
     selected: list[tuple[SplitAlert, int]] = []  # (alert, tier)
     seen_keys: set = set()
@@ -307,18 +328,27 @@ def run_pipeline(
         if _has_bovada_best(alert, bovada_spreads, bovada_totals):
             add(alert, 1)
 
-    # Tier 2: DK ∩ Circa (not already Tier 1)
-    for alert in dk_circa_overlap:
-        add(alert, 2)
+    # Tier 2: Circa ∩ Bovada best price (Circa-only + Bovada, not in DK)
+    for alert in circa_only:
+        if _has_bovada_best(alert, bovada_spreads, bovada_totals):
+            add(alert, 2)
 
-    # Tier 3: DK ∩ Bovada best price (not already Tier 1/2)
+    # Tier 3: DK ∩ Circa (not already Tier 1)
+    for alert in dk_circa_overlap:
+        add(alert, 3)
+
+    # Tier 4: DK ∩ Bovada best price (not already Tier 1/3)
     for alert in dk_alerts:
         if _has_bovada_best(alert, bovada_spreads, bovada_totals):
-            add(alert, 3)
+            add(alert, 4)
 
-    # Tier 4: All remaining DK sharp plays
+    # Tier 5: Circa only (not already Tier 2)
+    for alert in circa_only:
+        add(alert, 5)
+
+    # Tier 6: All remaining DK sharp plays
     for alert in dk_alerts:
-        add(alert, 4)
+        add(alert, 6)
 
     # Build Play objects, compute confidence scores, sort
     plays: list[Play] = []
@@ -363,7 +393,11 @@ if __name__ == "__main__":
         print("No plays found.")
     else:
         print(f"\n=== Selected Plays ({len(plays)}) ===\n")
-        tier_labels = {1: "DK+Circa+Bovada Best", 2: "DK+Circa", 3: "DK+Bovada Best", 4: "DK Sharp"}
+        tier_labels = {
+            1: "DK+Circa+Bovada Best", 2: "Circa+Bovada Best",
+            3: "DK+Circa", 4: "DK+Bovada Best",
+            5: "Circa Only", 6: "DK Only",
+        }
         for i, play in enumerate(plays, 1):
             a = play.alert
             line = f"{play.bovada_line} ({play.bovada_odds})" if play.bovada_line else "N/A"
