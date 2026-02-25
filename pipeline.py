@@ -266,7 +266,7 @@ def run_pipeline(
     spreads_text: str,
     totals_text: str,
     sport: str = "cbb",
-    threshold: int = 25,
+    threshold: int | None = None,
 ) -> list[Play]:
     """
     Full analysis pipeline.
@@ -275,8 +275,12 @@ def run_pipeline(
     The caller is responsible for slicing to PROMPT_MAX_PLAYS for the Gemini
     prompt while showing the full list in the UI table.
     """
+    config = get_config(sport)
     global _TEAM_ABBREV
-    _TEAM_ABBREV = get_config(sport)["team_abbrev"]
+    _TEAM_ABBREV = config["team_abbrev"]
+
+    if threshold is None:
+        threshold = config.get("threshold", 25)
 
     dk_alerts = parse_splits(dk_text, threshold)
     circa_alerts = parse_splits(circa_text, threshold) if circa_text.strip() else []

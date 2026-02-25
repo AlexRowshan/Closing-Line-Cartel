@@ -86,6 +86,7 @@ SPORT_CONFIGS = {
         "oddstrader_totals_url": "https://www.oddstrader.com/ncaa-college-basketball/?eid&g=game&m=total",
         "team_abbrev": CBB_TEAM_ABBREV,
         "display_name": "CBB",
+        "threshold": 25,
     },
     "nba": {
         # NBA VSIN: separate direct URLs per book — no tab clicking needed
@@ -96,6 +97,7 @@ SPORT_CONFIGS = {
         "oddstrader_totals_url": "https://www.oddstrader.com/nba/?eid&g=game&m=total",
         "team_abbrev": NBA_TEAM_ABBREV,
         "display_name": "NBA",
+        "threshold": 20,
     },
 }
 
