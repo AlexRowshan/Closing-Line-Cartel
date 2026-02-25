@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sharp CBB Analyzer</title>
+  <title>Sharp Betting Analyzer</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -368,13 +368,48 @@
     }
     #run-again-btn:hover { background: rgba(59,130,246,0.08); }
     #run-again-btn.visible { display: inline-block; }
+
+    /* ── Sport tab switcher ── */
+    .sport-tabs {
+      display: flex;
+      gap: 0.4rem;
+      margin-top: 1rem;
+    }
+
+    .sport-tab {
+      background: var(--surface2);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.35rem 1.1rem;
+      font-size: 0.85rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+
+    .sport-tab.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+
+    .sport-tab:hover:not(.active) {
+      background: var(--border);
+      color: var(--text);
+    }
   </style>
 </head>
 <body>
 
 <header>
-  <h1>Sharp CBB Analyzer</h1>
-  <p>Fetches VSIN splits + OddsTrader Bovada lines, filters for sharp plays, and builds your Gemini prompt.</p>
+  <h1 id="page-title">Sharp CBB Analyzer</h1>
+  <p id="page-subtitle">College Basketball — VSIN splits + OddsTrader Bovada lines, filtered for sharp plays.</p>
+  <div class="sport-tabs">
+    <button class="sport-tab active" data-sport="cbb" onclick="switchSport('cbb')">CBB</button>
+    <button class="sport-tab" data-sport="nba" onclick="switchSport('nba')">NBA</button>
+  </div>
 </header>
 
 <main>
@@ -454,12 +489,63 @@
   const TIER_CLASSES = { 1: 'tier-1', 2: 'tier-2', 3: 'tier-3', 4: 'tier-4', 5: 'tier-5', 6: 'tier-6' };
   const PAGE_SIZE = 10;
 
+  const SPORT_META = {
+    cbb: {
+      title: 'Sharp CBB Analyzer',
+      subtitle: 'College Basketball — VSIN splits + OddsTrader Bovada lines, filtered for sharp plays.',
+    },
+    nba: {
+      title: 'Sharp NBA Analyzer',
+      subtitle: 'NBA — VSIN splits + OddsTrader Bovada lines, filtered for sharp plays.',
+    },
+  };
+
+  let _selectedSport = 'cbb';
   let eventSource = null;
   let _allPlays = [];
   let _promptCount = 0;
   let _currentPage = 0;
   let _sortKey = 'score';   // 'score' | 'diff'
   let _sortDir = 'desc';    // 'desc' | 'asc'
+
+  function switchSport(sport) {
+    if (_selectedSport === sport) return;
+    _selectedSport = sport;
+
+    // Update tab button styles
+    document.querySelectorAll('.sport-tab').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.sport === sport);
+    });
+
+    // Update title and subtitle
+    const meta = SPORT_META[sport];
+    document.getElementById('page-title').textContent = meta.title;
+    document.getElementById('page-subtitle').textContent = meta.subtitle;
+
+    // Clear any stale results from the previous sport
+    resetUI();
+  }
+
+  function resetUI() {
+    document.getElementById('error-banner').classList.remove('visible');
+    document.getElementById('no-data').classList.remove('visible');
+    document.getElementById('results').classList.remove('visible');
+    document.getElementById('run-again-btn').classList.remove('visible');
+    document.getElementById('plays-tbody').innerHTML = '';
+    document.getElementById('prompt-box').value = '';
+    document.getElementById('log').innerHTML = '';
+    document.getElementById('log-wrap').classList.remove('visible');
+    document.getElementById('copy-btn').classList.remove('copied');
+    document.getElementById('copy-btn').textContent = 'Copy Prompt';
+    document.getElementById('pagination').style.display = 'none';
+    _allPlays = [];
+    _promptCount = 0;
+    _currentPage = 0;
+    _sortKey = 'score';
+    _sortDir = 'desc';
+    updateSortHeaders();
+    if (eventSource) { eventSource.close(); eventSource = null; }
+  }
 
   function log(msg, cls = '') {
     const wrap = document.getElementById('log-wrap');
@@ -489,29 +575,10 @@
   }
 
   function runAnalysis() {
-    // Reset UI
-    document.getElementById('error-banner').classList.remove('visible');
-    document.getElementById('no-data').classList.remove('visible');
-    document.getElementById('results').classList.remove('visible');
-    document.getElementById('run-again-btn').classList.remove('visible');
-    document.getElementById('plays-tbody').innerHTML = '';
-    document.getElementById('prompt-box').value = '';
-    document.getElementById('log').innerHTML = '';
-    document.getElementById('copy-btn').classList.remove('copied');
-    document.getElementById('copy-btn').textContent = 'Copy Prompt';
-    document.getElementById('pagination').style.display = 'none';
-    _allPlays = [];
-    _promptCount = 0;
-    _currentPage = 0;
-    _sortKey = 'score';
-    _sortDir = 'desc';
-    updateSortHeaders();
-
+    resetUI();
     setRunning(true);
 
-    if (eventSource) { eventSource.close(); }
-
-    eventSource = new EventSource('/api/analyze');
+    eventSource = new EventSource(`/api/analyze?sport=${_selectedSport}`);
 
     eventSource.addEventListener('progress', (e) => {
       const data = JSON.parse(e.data);
@@ -700,7 +767,6 @@
   }
 
   function resetAndRun() {
-    document.getElementById('run-again-btn').classList.remove('visible');
     runAnalysis();
   }
 </script>

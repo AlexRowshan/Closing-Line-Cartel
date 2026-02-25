@@ -19,47 +19,14 @@ from datetime import datetime, date
 
 from vsin_splits_parser import SplitAlert, parse_splits
 from oddstrader_parser import BovadaEntry, parse_oddstrader
+from sport_config import get_config, CBB_TEAM_ABBREV
 
 # Max plays to pass into the Gemini prompt (table shows all plays)
 PROMPT_MAX_PLAYS = 5
 
-# Abbreviation map: VSIN short names → OddsTrader full names
-TEAM_ABBREV = {
-    "st": "state",
-    "penn st": "penn state",
-    "michigan st": "michigan state",
-    "ohio st": "ohio state",
-    "iowa st": "iowa state",
-    "kansas st": "kansas state",
-    "utah st": "utah state",
-    "colorado st": "colorado state",
-    "san jose st": "san jose state",
-    "fresno st": "fresno state",
-    "boise st": "boise state",
-    "oregon st": "oregon state",
-    "arizona st": "arizona state",
-    "washington st": "washington state",
-    "florida st": "florida state",
-    "nc st": "nc state",
-    "n carolina st": "nc state",
-    "north carolina st": "nc state",
-    "usc": "usc",
-    "ucf": "ucf",
-    "vmi": "virginia military",
-    "smu": "southern methodist",
-    "tcu": "tcu",
-    "lsu": "louisiana state",
-    "ole miss": "ole miss",
-    "unlv": "unlv",
-    "utep": "utep",
-    "utsa": "utsa",
-    "uab": "uab",
-    "fiu": "florida international",
-    "fau": "florida atlantic",
-    "niu": "northern illinois",
-    "uic": "illinois chicago",
-    "uconn": "connecticut",
-}
+# Active abbreviation map — set at the start of run_pipeline() based on sport.
+# Single-threaded (one analysis at a time via _analysis_running lock in app.py).
+_TEAM_ABBREV: dict = CBB_TEAM_ABBREV
 
 
 @dataclass
@@ -112,7 +79,7 @@ def _normalize_team(name: str) -> str:
     n = _clean_team_name(name).lower()
     # Remove leading articles
     n = re.sub(r"^(the|a|an)\s+", "", n)
-    return TEAM_ABBREV.get(n, n)
+    return _TEAM_ABBREV.get(n, n)
 
 
 def _teams_match(vsin_name: str, oddstrader_name: str) -> bool:
@@ -298,6 +265,7 @@ def run_pipeline(
     circa_text: str,
     spreads_text: str,
     totals_text: str,
+    sport: str = "cbb",
     threshold: int = 25,
 ) -> list[Play]:
     """
@@ -307,6 +275,9 @@ def run_pipeline(
     The caller is responsible for slicing to PROMPT_MAX_PLAYS for the Gemini
     prompt while showing the full list in the UI table.
     """
+    global _TEAM_ABBREV
+    _TEAM_ABBREV = get_config(sport)["team_abbrev"]
+
     dk_alerts = parse_splits(dk_text, threshold)
     circa_alerts = parse_splits(circa_text, threshold) if circa_text.strip() else []
     bovada_spreads, bovada_totals = parse_oddstrader(spreads_text, totals_text)

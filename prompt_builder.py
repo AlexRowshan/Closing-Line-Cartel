@@ -3,6 +3,7 @@ Gemini Deep Research Prompt Builder
 --------------------------------------
 Formats the selected Play objects into the exact sharp betting analysis
 prompt template used with Gemini Deep Research.
+Supports both CBB and NBA sport modes.
 """
 
 import re
@@ -53,32 +54,24 @@ def _format_line_label(play: Play) -> str:
         return f"{team_name} {line} ({odds})"
 
 
-def build_prompt(plays: list[Play]) -> str:
-    if not plays:
-        return "No sharp plays found for today's slate."
-
-    # -----------------------------------------------------------------------
-    # Build games section
-    # -----------------------------------------------------------------------
-    games_section_lines = []
+def _build_games_section(plays: list[Play]) -> str:
+    lines = []
     for i, play in enumerate(plays, 1):
         alert = play.alert
-        matchup = f"{_clean_team_name(alert.away_team)} at {_clean_team_name(alert.home_team)}"
+        matchup = f"{_clean_team_name(alert.away_team)} vs {_clean_team_name(alert.home_team)}"
         market_label = "Total Options" if alert.market == "Total" else "Spread Options"
         line_label = _format_line_label(play)
 
-        games_section_lines.append(f"### Game {i}: {matchup}")
-        games_section_lines.append(f"**{market_label}:**")
-        games_section_lines.append(f"- {line_label}")
-        games_section_lines.append("")
+        lines.append(f"### Game {i}: {matchup}")
+        lines.append(f"**{market_label}:**")
+        lines.append(f"- {line_label}")
+        lines.append("")
 
-    games_section = "\n".join(games_section_lines).rstrip()
+    return "\n".join(lines).rstrip()
 
-    # Count games for the elimination section
-    n_plays = len(plays)
-    n_eliminated = n_plays - 1
 
-    prompt = f"""# SHARP BETTING ANALYSIS: CBB SLATE
+def _build_cbb_prompt(plays: list[Play], games_section: str, n_eliminated: int) -> str:
+    return f"""# SHARP BETTING ANALYSIS: CBB SLATE
 
 ## YOUR TASK
 You are a professional CBB sharp handicapper with 15 years of experience. Analyze today's slate and select the SINGLE highest-value betting opportunity from the exact options provided below.
@@ -164,7 +157,107 @@ Format each elimination like this:
 ❌ Do NOT claim "the consensus line is different than what you provided"
 ❌ Do NOT skip the eliminated options section"""
 
-    return prompt
+
+def _build_nba_prompt(plays: list[Play], games_section: str, n_eliminated: int) -> str:
+    return f"""# SHARP BETTING ANALYSIS: NBA SLATE
+
+## YOUR TASK
+You are a professional NBA sharp handicapper with 15 years of experience. Analyze today's slate and select the SINGLE highest-value betting opportunity from the exact options provided below.
+
+---
+
+## ⚠️ THE ONLY BETTING OPTIONS YOU CAN RECOMMEND ⚠️
+
+
+## GAMES TO ANALYZE
+
+{games_section}
+
+---
+
+## 🚨 ABSOLUTE CONSTRAINTS 🚨
+
+**1. LINE DISCIPLINE:**
+- These {len(plays)} lines ARE the market consensus
+- Do NOT claim different lines exist elsewhere ("the real line is -11.5")
+- Do NOT recommend lines not listed above
+- Your final recommendation MUST be copy-pasted exactly from the list above
+
+**2. MANDATORY OUTPUT SECTIONS:**
+- **SHARP BET SELECTION:** Pick ONE option from the {len(plays)} above
+- **ELIMINATED OPTIONS:** Explain why you rejected ALL {n_eliminated} non-selected options
+
+**If you violate either constraint, your analysis is invalid.**
+
+---
+
+## RESEARCH FRAMEWORK
+
+Analyze each of the {len(plays)} options through these factors:
+
+**Factor 1: Market Dynamics** - Line movement, reverse line movement, sharp action
+**Factor 2: Market Psychology** - Public bias, recency bias, contrarian value, anchoring effect
+**Factor 3: Statistical Matchup** - Offensive/defensive ratings, pace, efficiency, turnover differential (last 15 games)
+**Factor 4: Injuries & Personnel** - Key player status, depth, lineup continuity. on/off net rating
+**Factor 5: Situational Spots** - Rest, schedule, motivation, home/road context. travel fatigue (time zones/miles)
+
+---
+
+## REQUIRED OUTPUT FORMAT
+
+### SHARP BET SELECTION
+
+**Recommended Bet:** [Copy-paste exactly from the {len(plays)} options above]
+
+**Why This is the Play:**
+[2-3 paragraphs explaining which factors create the edge and why this specific line is mispriced]
+
+**Edge Breakdown:**
+1. **Market Dynamics:** [Strong/Moderate/Weak] - [Brief explanation]
+2. **Situational Spot:** [Strong/Moderate/Weak] - [Brief explanation]
+3. **Personnel Impact:** [Strong/Moderate/Weak] - [Brief explanation]
+4. **Statistical Matchup:** [Strong/Moderate/Weak] - [Brief explanation]
+5. **Market Psychology:** [Strong/Moderate/Weak] - [Brief explanation]
+
+**Overall Confidence:** [Low/Medium/High]
+
+**Risk Factors:** [What could go wrong with this bet]
+
+---
+
+### ELIMINATED OPTIONS (MANDATORY)
+
+**YOU MUST EXPLAIN WHY YOU REJECTED ALL {n_eliminated} NON-SELECTED OPTIONS.**
+
+Format each elimination like this:
+
+**Option [X]: [Exact option text] at [odds]**
+- **Why Eliminated:** [2-3 sentences citing which of the 5 factors were weak or contradicted this bet]
+
+---
+
+## CRITICAL REMINDERS
+
+✅ Your recommendation must be EXACTLY one of the {len(plays)} options listed at the top
+✅ The eliminated options section is MANDATORY—you must write {n_eliminated} elimination paragraphs
+✅ Use recent data (last 15 games) and cite sources when possible
+✅ Think like a sharp bettor finding market inefficiencies, not a fan picking favorites
+
+❌ Do NOT recommend lines not listed above
+❌ Do NOT claim "the consensus line is different than what you provided"
+❌ Do NOT skip the eliminated options section"""
+
+
+def build_prompt(plays: list[Play], sport: str = "cbb") -> str:
+    if not plays:
+        return "No sharp plays found for today's slate."
+
+    games_section = _build_games_section(plays)
+    n_eliminated = len(plays) - 1
+
+    if sport.lower() == "nba":
+        return _build_nba_prompt(plays, games_section, n_eliminated)
+    return _build_cbb_prompt(plays, games_section, n_eliminated)
 
 
 if __name__ == "__main__":
@@ -197,9 +290,13 @@ if __name__ == "__main__":
 
     dummy_plays = [
         Play(alert=dummy_alerts[0], bovada_line="151.0", bovada_odds="-110",
-             bovada_direction="under", is_bovada_best_price=True, conviction_tier=1),
+             bovada_direction="under", is_bovada_best_price=True, conviction_tier=1,
+             confidence_score=85),
         Play(alert=dummy_alerts[1], bovada_line="+15.0", bovada_odds="-115",
-             bovada_direction="", is_bovada_best_price=False, conviction_tier=2),
+             bovada_direction="", is_bovada_best_price=False, conviction_tier=2,
+             confidence_score=65),
     ]
 
-    print(build_prompt(dummy_plays))
+    import sys
+    sport_arg = sys.argv[1] if len(sys.argv) > 1 else "cbb"
+    print(build_prompt(dummy_plays, sport=sport_arg))

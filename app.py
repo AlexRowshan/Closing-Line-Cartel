@@ -45,12 +45,15 @@ async def root():
 
 
 @app.get("/api/analyze")
-async def analyze(request: Request):
+async def analyze(request: Request, sport: str = "cbb"):
     """
     SSE endpoint. Streams progress messages and final result.
     Event types: 'progress', 'result', 'error'
+    Query params:
+      sport: 'cbb' (default) or 'nba'
     """
     global _analysis_running
+    sport = sport.lower() if sport.lower() in ("cbb", "nba") else "cbb"
 
     async def event_stream():
         global _analysis_running
@@ -66,7 +69,7 @@ async def analyze(request: Request):
             # --- Step 1: VSIN ---
             yield _sse_event("progress", {"message": "Fetching VSIN DraftKings splits..."})
             try:
-                dk_text, circa_text = await scrape_vsin()
+                dk_text, circa_text = await scrape_vsin(sport)
             except Exception as e:
                 yield _sse_event("error", {"message": f"Failed to fetch VSIN data: {e}"})
                 return
@@ -85,7 +88,7 @@ async def analyze(request: Request):
             # --- Step 2: OddsTrader ---
             yield _sse_event("progress", {"message": "Fetching OddsTrader spreads & totals..."})
             try:
-                spreads_text, totals_text = await scrape_oddstrader()
+                spreads_text, totals_text = await scrape_oddstrader(sport)
             except Exception as e:
                 yield _sse_event("error", {"message": f"Failed to fetch OddsTrader data: {e}"})
                 return
@@ -96,7 +99,7 @@ async def analyze(request: Request):
             # --- Step 3: Analysis ---
             yield _sse_event("progress", {"message": "Running sharp money analysis..."})
             try:
-                plays = run_pipeline(dk_text, circa_text, spreads_text, totals_text)
+                plays = run_pipeline(dk_text, circa_text, spreads_text, totals_text, sport=sport)
             except Exception as e:
                 yield _sse_event("error", {"message": f"Analysis failed: {e}"})
                 return
@@ -121,7 +124,7 @@ async def analyze(request: Request):
                 )
             })
             try:
-                prompt = build_prompt(prompt_plays)
+                prompt = build_prompt(prompt_plays, sport=sport)
             except Exception as e:
                 yield _sse_event("error", {"message": f"Prompt build failed: {e}"})
                 return
