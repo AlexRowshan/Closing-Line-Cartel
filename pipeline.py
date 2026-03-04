@@ -79,6 +79,9 @@ def _normalize_team(name: str) -> str:
     n = _clean_team_name(name).lower()
     # Remove leading articles
     n = re.sub(r"^(the|a|an)\s+", "", n)
+    # Strip periods (e.g. "L.A. Clippers" → "la clippers") before abbreviation lookup
+    n = n.replace(".", "")
+    n = " ".join(n.split())  # collapse any double spaces left behind
     return _TEAM_ABBREV.get(n, n)
 
 
