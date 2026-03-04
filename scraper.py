@@ -67,12 +67,12 @@ async def _fetch_vsin_direct(browser, url: str) -> str:
     """
     page = await _new_page(browser)
     try:
-        await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        await page.goto(url, wait_until="domcontentloaded", timeout=20000)
         try:
-            await page.wait_for_selector("table", timeout=15000)
+            await page.wait_for_selector("table", timeout=8000)
         except PlaywrightTimeoutError:
             pass
-        await asyncio.sleep(2)
+        await asyncio.sleep(1)
         return await _get_inner_text(page)
     finally:
         await page.close()
@@ -95,12 +95,12 @@ async def scrape_vsin(sport: str = "cbb") -> tuple[str, str]:
                 # CBB path: one base URL, click Circa tab for second dataset
                 page = await _new_page(browser)
 
-                await page.goto(config["vsin_dk_url"], wait_until="domcontentloaded", timeout=30000)
+                await page.goto(config["vsin_dk_url"], wait_until="domcontentloaded", timeout=20000)
                 try:
-                    await page.wait_for_selector("table", timeout=15000)
+                    await page.wait_for_selector("table", timeout=8000)
                 except PlaywrightTimeoutError:
                     pass
-                await asyncio.sleep(2)
+                await asyncio.sleep(1)
                 dk_text = await _get_inner_text(page)
 
                 # Find and click the Circa Sports tab
@@ -117,7 +117,7 @@ async def scrape_vsin(sport: str = "cbb") -> tuple[str, str]:
                         element = page.locator(selector).first
                         if await element.count() > 0:
                             await element.click()
-                            await asyncio.sleep(2)
+                            await asyncio.sleep(1)
                             clicked_circa = True
                             break
                     except Exception:
@@ -147,13 +147,13 @@ async def _fetch_oddstrader_page(browser, url: str) -> str:
             if route.request.resource_type in _BLOCK_TYPES
             else route.continue_(),
         )
-        await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        await page.goto(url, wait_until="domcontentloaded", timeout=20000)
         # Wait for game rows (win-loss records indicate data has loaded)
         try:
-            await page.wait_for_selector("text=/\\d+-\\d+/", timeout=15000)
+            await page.wait_for_selector("text=/\\d+-\\d+/", timeout=8000)
         except PlaywrightTimeoutError:
             pass
-        await asyncio.sleep(2)
+        await asyncio.sleep(1)
         return await _get_inner_text(page)
     finally:
         await page.close()

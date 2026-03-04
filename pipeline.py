@@ -165,6 +165,22 @@ def _filter_future_games(alerts: list[SplitAlert]) -> list[SplitAlert]:
 # Bovada line lookup
 # ---------------------------------------------------------------------------
 
+def _both_teams_match(alert: SplitAlert, entry: BovadaEntry) -> bool:
+    """
+    Verify that the OddsTrader entry belongs to the same game as the alert
+    by checking that BOTH teams match (entry.team + entry.opponent against
+    alert.away_team + alert.home_team in either order).
+    """
+    if not entry.opponent:
+        return False
+    # entry.team matches one side AND entry.opponent matches the other
+    if _teams_match(alert.away_team, entry.team) and _teams_match(alert.home_team, entry.opponent):
+        return True
+    if _teams_match(alert.home_team, entry.team) and _teams_match(alert.away_team, entry.opponent):
+        return True
+    return False
+
+
 def _get_bovada_entry_for_alert(
     alert: SplitAlert,
     bovada_spreads: dict[str, BovadaEntry],
@@ -172,33 +188,28 @@ def _get_bovada_entry_for_alert(
 ) -> BovadaEntry | None:
     """
     Find the BovadaEntry that corresponds to this alert.
-    For spreads: match by the team on the sharp side.
-    For totals: match by either team in the game.
+    Requires BOTH teams in the matchup to match to avoid false positives
+    from partial name matches (e.g. "Mississippi" != "Mississippi State").
     """
     if alert.market == "Spread":
-        # The sharp side team name is in alert.side (e.g. "USC -9")
+        # Primary: match the sharp-side team AND verify both teams match
         team_name = re.sub(r"\s+[+-][\d.]+$", "", alert.side).strip()
         for bov_name, entry in bovada_spreads.items():
-            if _teams_match(team_name, entry.team):
+            if _teams_match(team_name, entry.team) and _both_teams_match(alert, entry):
                 return entry
-        # Fallback: match either team in the game
+        # Fallback: match either team but still require both-team verification
         for bov_name, entry in bovada_spreads.items():
-            if _teams_match(alert.away_team, entry.team) or \
-               _teams_match(alert.home_team, entry.team):
+            if _both_teams_match(alert, entry):
                 return entry
 
     else:  # Total
         direction = "over" if alert.side.lower().startswith("over") else "under"
         for bov_name, entry in bovada_totals.items():
-            if entry.direction == direction and (
-                _teams_match(alert.away_team, entry.team) or
-                _teams_match(alert.home_team, entry.team)
-            ):
+            if entry.direction == direction and _both_teams_match(alert, entry):
                 return entry
-        # Relaxed: match by team regardless of direction
+        # Relaxed: match by both teams regardless of direction
         for bov_name, entry in bovada_totals.items():
-            if _teams_match(alert.away_team, entry.team) or \
-               _teams_match(alert.home_team, entry.team):
+            if _both_teams_match(alert, entry):
                 return entry
 
     return None

@@ -69,7 +69,18 @@ async def analyze(request: Request, sport: str = "cbb"):
             # --- Step 1: VSIN ---
             yield _sse_event("progress", {"message": "Fetching VSIN DraftKings splits..."})
             try:
-                dk_text, circa_text = await scrape_vsin(sport)
+                dk_text, circa_text = await asyncio.wait_for(
+                    scrape_vsin(sport), timeout=30
+                )
+            except asyncio.TimeoutError:
+                yield _sse_event("error", {
+                    "message": (
+                        "Timed out after 30s fetching VSIN splits "
+                        "(stuck on DraftKings or Circa Sports page). "
+                        "The VSIN site may be slow or down — try again."
+                    )
+                })
+                return
             except Exception as e:
                 yield _sse_event("error", {"message": f"Failed to fetch VSIN data: {e}"})
                 return
@@ -88,7 +99,18 @@ async def analyze(request: Request, sport: str = "cbb"):
             # --- Step 2: OddsTrader ---
             yield _sse_event("progress", {"message": "Fetching OddsTrader spreads & totals..."})
             try:
-                spreads_text, totals_text = await scrape_oddstrader(sport)
+                spreads_text, totals_text = await asyncio.wait_for(
+                    scrape_oddstrader(sport), timeout=30
+                )
+            except asyncio.TimeoutError:
+                yield _sse_event("error", {
+                    "message": (
+                        "Timed out after 30s fetching OddsTrader lines "
+                        "(stuck on spreads or totals page). "
+                        "The OddsTrader site may be slow or down — try again."
+                    )
+                })
+                return
             except Exception as e:
                 yield _sse_event("error", {"message": f"Failed to fetch OddsTrader data: {e}"})
                 return

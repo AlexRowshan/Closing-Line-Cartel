@@ -101,6 +101,7 @@ def _team_name_key(name: str) -> str:
 @dataclass
 class BovadaEntry:
     team: str          # normalized team name
+    opponent: str      # the other team in the same game (for two-team matching)
     bovada_line: str   # e.g. "+5" for spread, "148.5" for total
     bovada_odds: str   # e.g. "-115"
     is_best_price: bool
@@ -282,41 +283,97 @@ def parse_oddstrader(
 
     # --- Spreads ---
     spread_blocks = _parse_blocks(spreads_text)
-    for block in spread_blocks:
+    # Pair consecutive blocks: OddsTrader always lists away team then home team
+    for i in range(0, len(spread_blocks) - 1, 2):
+        block_a = spread_blocks[i]
+        block_b = spread_blocks[i + 1]
+
+        for block, opp_block in [(block_a, block_b), (block_b, block_a)]:
+            book_order = block["book_order"]
+            bov_idx = _bovada_index(book_order)
+            is_best = block["best_book"] == "bovada"
+
+            if is_best:
+                spread_val, odds = _parse_spread_line(block["best_line"])
+            else:
+                ind = block["individual_lines"]
+                if bov_idx < len(ind) and ind[bov_idx] is not None:
+                    spread_val, odds = _parse_spread_line(ind[bov_idx])
+                else:
+                    spread_val, odds = "", ""
+
+            if spread_val:
+                key = _team_name_key(block["name"])
+                bovada_spreads[key] = BovadaEntry(
+                    team=block["name"],
+                    opponent=opp_block["name"],
+                    bovada_line=spread_val,
+                    bovada_odds=odds,
+                    is_best_price=is_best,
+                    direction="",
+                    market="spread",
+                )
+
+    # Handle odd trailing block (no opponent to pair with)
+    if len(spread_blocks) % 2 == 1:
+        block = spread_blocks[-1]
         book_order = block["book_order"]
         bov_idx = _bovada_index(book_order)
         is_best = block["best_book"] == "bovada"
-
         if is_best:
-            # Best line is the Bovada line
             spread_val, odds = _parse_spread_line(block["best_line"])
         else:
-            # Get the Bovada column from individual book lines.
-            # ind[bov_idx] may be None if that book had no line for this game.
             ind = block["individual_lines"]
             if bov_idx < len(ind) and ind[bov_idx] is not None:
                 spread_val, odds = _parse_spread_line(ind[bov_idx])
             else:
                 spread_val, odds = "", ""
-
         if spread_val:
             key = _team_name_key(block["name"])
             bovada_spreads[key] = BovadaEntry(
-                team=block["name"],
-                bovada_line=spread_val,
-                bovada_odds=odds,
-                is_best_price=is_best,
-                direction="",
-                market="spread",
+                team=block["name"], opponent="",
+                bovada_line=spread_val, bovada_odds=odds,
+                is_best_price=is_best, direction="", market="spread",
             )
 
     # --- Totals ---
     total_blocks = _parse_blocks(totals_text)
-    for block in total_blocks:
+    for i in range(0, len(total_blocks) - 1, 2):
+        block_a = total_blocks[i]
+        block_b = total_blocks[i + 1]
+
+        for block, opp_block in [(block_a, block_b), (block_b, block_a)]:
+            book_order = block["book_order"]
+            bov_idx = _bovada_index(book_order)
+            is_best = block["best_book"] == "bovada"
+
+            if is_best:
+                direction, number, odds = _parse_total_line(block["best_line"])
+            else:
+                ind = block["individual_lines"]
+                if bov_idx < len(ind) and ind[bov_idx] is not None:
+                    direction, number, odds = _parse_total_line(ind[bov_idx])
+                else:
+                    direction, number, odds = "", "", ""
+
+            if number:
+                key = _team_name_key(block["name"])
+                bovada_totals[key] = BovadaEntry(
+                    team=block["name"],
+                    opponent=opp_block["name"],
+                    bovada_line=number,
+                    bovada_odds=odds,
+                    is_best_price=is_best,
+                    direction=direction,
+                    market="total",
+                )
+
+    # Handle odd trailing block
+    if len(total_blocks) % 2 == 1:
+        block = total_blocks[-1]
         book_order = block["book_order"]
         bov_idx = _bovada_index(book_order)
         is_best = block["best_book"] == "bovada"
-
         if is_best:
             direction, number, odds = _parse_total_line(block["best_line"])
         else:
@@ -325,16 +382,12 @@ def parse_oddstrader(
                 direction, number, odds = _parse_total_line(ind[bov_idx])
             else:
                 direction, number, odds = "", "", ""
-
         if number:
             key = _team_name_key(block["name"])
             bovada_totals[key] = BovadaEntry(
-                team=block["name"],
-                bovada_line=number,
-                bovada_odds=odds,
-                is_best_price=is_best,
-                direction=direction,
-                market="total",
+                team=block["name"], opponent="",
+                bovada_line=number, bovada_odds=odds,
+                is_best_price=is_best, direction=direction, market="total",
             )
 
     return bovada_spreads, bovada_totals
