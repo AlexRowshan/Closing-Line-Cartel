@@ -81,7 +81,11 @@ def _normalize_team(name: str) -> str:
     n = re.sub(r"^(the|a|an)\s+", "", n)
     # Strip periods (e.g. "L.A. Clippers" → "la clippers") before abbreviation lookup
     n = n.replace(".", "")
+    # Replace hyphens with spaces so "Loyola-Marymount" matches "Loyola Marymount"
+    n = n.replace("-", " ")
     n = " ".join(n.split())  # collapse any double spaces left behind
+    # Expand common prefixes (VSIN "CSU-X" → OddsTrader "Cal State X")
+    n = re.sub(r"^csu\b", "cal state", n)
     return _TEAM_ABBREV.get(n, n)
 
 
