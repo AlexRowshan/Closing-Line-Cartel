@@ -58,7 +58,7 @@ def _build_games_section(plays: list[Play]) -> str:
     lines = []
     for i, play in enumerate(plays, 1):
         alert = play.alert
-        matchup = f"{_clean_team_name(alert.away_team)} vs {_clean_team_name(alert.home_team)}"
+        matchup = f"{_clean_team_name(alert.away_team)} @ {_clean_team_name(alert.home_team)}"
         market_label = "Total Options" if alert.market == "Total" else "Spread Options"
         line_label = _format_line_label(play)
 
@@ -195,11 +195,11 @@ You are a professional NBA sharp handicapper with 15 years of experience. Analyz
 
 Analyze each of the {len(plays)} options through these factors:
 
-**Factor 1: Market Dynamics** - Line movement, reverse line movement, sharp action
-**Factor 2: Market Psychology** - Public bias, recency bias, contrarian value, anchoring effect
-**Factor 3: Statistical Matchup** - Offensive/defensive ratings, pace, efficiency, turnover differential (last 15 games)
-**Factor 4: Injuries & Personnel** - Key player status, depth, lineup continuity. on/off net rating
-**Factor 5: Situational Spots** - Rest, schedule, motivation, home/road context. travel fatigue (time zones/miles)
+**Factor 1: Market Psychology** - Public bias, recency bias, contrarian value, anchoring effect
+**Factor 2: Statistical Matchup** - Offensive/defensive ratings, pace, efficiency, turnover differential (last 15 games)
+**Factor 3: Injuries & Personnel** - Key player status, depth, lineup continuity. on/off net rating
+**Factor 4: Situational Spots** - Rest, schedule, motivation, home/road context. travel fatigue (time zones/miles)
+**Factor 5: Tactical Matchup & Possession Edges** - Rebounding differentials, free-throw rates, and the mathematical shot profile (3-point volume vs. points in the paint)
 
 ---
 
@@ -213,11 +213,11 @@ Analyze each of the {len(plays)} options through these factors:
 [2-3 paragraphs explaining which factors create the edge and why this specific line is mispriced]
 
 **Edge Breakdown:**
-1. **Market Dynamics:** [Strong/Moderate/Weak] - [Brief explanation]
-2. **Situational Spot:** [Strong/Moderate/Weak] - [Brief explanation]
+1. **Market Psychology:** [Strong/Moderate/Weak] - [Brief explanation]
+2. **Statistical Matchup:** [Strong/Moderate/Weak] - [Brief explanation]
 3. **Personnel Impact:** [Strong/Moderate/Weak] - [Brief explanation]
-4. **Statistical Matchup:** [Strong/Moderate/Weak] - [Brief explanation]
-5. **Market Psychology:** [Strong/Moderate/Weak] - [Brief explanation]
+4. **Situational Spot:** [Strong/Moderate/Weak] - [Brief explanation]
+5. **Tactical Matchup & Possession Edges:** [Strong/Moderate/Weak] - [Brief explanation]
 
 **Overall Confidence:** [Low/Medium/High]
 
