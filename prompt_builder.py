@@ -73,16 +73,12 @@ def _build_games_section(plays: list[Play]) -> str:
 def _build_cbb_prompt(plays: list[Play], games_section: str, n_eliminated: int) -> str:
     return f"""# SHARP BETTING ANALYSIS: CBB SLATE
 
-## YOUR TASK
+## TASK
 You are a professional CBB sharp handicapper with 15 years of experience. Analyze today's slate and select the SINGLE highest-value betting opportunity from the exact options provided below.
 
 ---
 
-## ⚠️ THE ONLY BETTING OPTIONS YOU CAN RECOMMEND ⚠️
-
-
-## GAMES TO ANALYZE
-
+## PERMITTED BETTING OPTIONS
 
 {games_section}
 
@@ -94,11 +90,11 @@ You are a professional CBB sharp handicapper with 15 years of experience. Analyz
 - These lines ARE the market consensus
 - Do NOT claim different lines exist elsewhere
 - Do NOT recommend lines not listed above
-- Your final recommendation MUST be copy-pasted exactly from the list above
+- The final recommendation MUST be copy-pasted exactly from the list above
 
 **2. MANDATORY OUTPUT SECTIONS:**
 - **SHARP BET SELECTION:** Pick ONE option from the options above
-- **ELIMINATED OPTIONS:** Explain why you rejected every non-selected option
+- **ELIMINATED OPTIONS:** Explain why every non-selected option was eliminated
 
 **If you violate either constraint, your analysis is invalid.**
 
@@ -148,7 +144,7 @@ Format each elimination like this:
 
 ## CRITICAL REMINDERS
 
-✅ Your recommendation must be EXACTLY one of the options listed at the top
+✅ The final recommendation must be EXACTLY one of the options listed at the top
 ✅ The eliminated options section is MANDATORY
 ✅ Use recent data (last 15 games) and cite sources when possible. Do not rely on internal knowledge; verify current form.
 ✅ Think like a sharp bettor finding market inefficiencies, not a fan picking favorites
@@ -161,15 +157,12 @@ Format each elimination like this:
 def _build_nba_prompt(plays: list[Play], games_section: str, n_eliminated: int) -> str:
     return f"""# SHARP BETTING ANALYSIS: NBA SLATE
 
-## YOUR TASK
+## TASK
 You are a professional NBA sharp handicapper with 15 years of experience. Analyze today's slate and select the SINGLE highest-value betting opportunity from the exact options provided below.
 
 ---
 
-## ⚠️ THE ONLY BETTING OPTIONS YOU CAN RECOMMEND ⚠️
-
-
-## GAMES TO ANALYZE
+## PERMITTED BETTING OPTIONS
 
 {games_section}
 
@@ -181,11 +174,11 @@ You are a professional NBA sharp handicapper with 15 years of experience. Analyz
 - These {len(plays)} lines ARE the market consensus
 - Do NOT claim different lines exist elsewhere ("the real line is -11.5")
 - Do NOT recommend lines not listed above
-- Your final recommendation MUST be copy-pasted exactly from the list above
+- The final recommendation MUST be copy-pasted exactly from the list above
 
 **2. MANDATORY OUTPUT SECTIONS:**
 - **SHARP BET SELECTION:** Pick ONE option from the {len(plays)} above
-- **ELIMINATED OPTIONS:** Explain why you rejected ALL {n_eliminated} non-selected options
+- **ELIMINATED OPTIONS:** Explain why ALL {n_eliminated} non-selected options were eliminated
 
 **If you violate either constraint, your analysis is invalid.**
 
@@ -238,7 +231,7 @@ Format each elimination like this:
 
 ## CRITICAL REMINDERS
 
-✅ Your recommendation must be EXACTLY one of the {len(plays)} options listed at the top
+✅ The final recommendation must be EXACTLY one of the {len(plays)} options listed at the top
 ✅ The eliminated options section is MANDATORY—you must write {n_eliminated} elimination paragraphs
 ✅ Use recent data (last 15 games) and cite sources when possible
 ✅ Think like a sharp bettor finding market inefficiencies, not a fan picking favorites
