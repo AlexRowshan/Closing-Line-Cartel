@@ -37,6 +37,7 @@ CBB_TEAM_ABBREV = {
     "niu": "northern illinois",
     "uic": "illinois chicago",
     "uconn": "connecticut",
+    "brigham young": "byu",
 }
 
 NBA_TEAM_ABBREV = {

@@ -86,6 +86,8 @@ def _normalize_team(name: str) -> str:
     n = " ".join(n.split())  # collapse any double spaces left behind
     # Expand common prefixes (VSIN "CSU-X" → OddsTrader "Cal State X")
     n = re.sub(r"^csu\b", "cal state", n)
+    # Expand trailing "st" → "state" (VSIN uses "Kansas ST", OddsTrader uses "Kansas State")
+    n = re.sub(r"\bst$", "state", n)
     return _TEAM_ABBREV.get(n, n)
 
 
