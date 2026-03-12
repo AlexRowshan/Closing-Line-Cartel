@@ -37,6 +37,15 @@ def _normalize_team(name: str) -> str:
     n = " ".join(n.split())
     n = re.sub(r"^csu\b", "cal state", n)
     n = re.sub(r"\bst$", "state", n)
+    # Collapse directional prefixes to single letter so both
+    # "S Utah" (VSIN) and "Southern Utah" (OddsTrader) normalize the same.
+    n = re.sub(r"^north(?:ern)?\s", "n ", n)
+    n = re.sub(r"^south(?:ern)?\s", "s ", n)
+    n = re.sub(r"^east(?:ern)?\s", "e ", n)
+    n = re.sub(r"^west(?:ern)?\s", "w ", n)
+    # Normalize "UT <school>" → "texas <school>" so VSIN's
+    # "Texas-Arlington" matches OddsTrader's "UT Arlington", etc.
+    n = re.sub(r"^ut\s", "texas ", n)
     return _TEAM_ABBREV.get(n, n)
 
 
