@@ -3,12 +3,16 @@ Finds bets that appear in BOTH the VSiN splits alerts AND Circa splits alerts.
 Matching is by team + bet type (spread or over/under), ignoring actual numbers.
 
 Usage:
-    python find_sharp_overlap.py <splits.txt> <circasplits.txt> [threshold]
+    python tools/find_sharp_overlap.py <splits.txt> <circasplits.txt> [threshold]
 """
 
 import sys
 import re
-from vsin_splits_parser import parse_splits, format_alerts
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from parsers import parse_splits, format_alerts
 
 
 def make_key(alert):
@@ -31,7 +35,7 @@ def make_key(alert):
 def main():
     if len(sys.argv) < 3:
         print(
-            "Usage: python find_sharp_overlap.py "
+            "Usage: python tools/find_sharp_overlap.py "
             "<splits.txt> <circasplits.txt> [threshold]"
         )
         sys.exit(1)
@@ -46,7 +50,6 @@ def main():
         alerts_b = parse_splits(f.read(), threshold=threshold)
 
     keys_b = {make_key(a) for a in alerts_b}
-
     overlaps = [a for a in alerts_a if make_key(a) in keys_b]
 
     print(

@@ -3,12 +3,16 @@ Finds bets that appear in both the VSiN sharp money alerts AND have
 the best market price on Bovada.
 
 Usage:
-    python find_overlaps.py <splits.txt> <spreadsplits.txt> <totalsmarket.txt> [threshold]
+    python tools/find_overlaps.py <splits.txt> <spreadsplits.txt> <totalsmarket.txt> [threshold]
 """
 
 import sys
 import re
-from vsin_splits_parser import parse_splits, format_alerts
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from parsers import parse_splits, format_alerts
 
 
 def get_bovada_teams(filename):
@@ -74,7 +78,7 @@ def get_bovada_teams(filename):
 def main():
     if len(sys.argv) < 4:
         print(
-            "Usage: python find_overlaps.py "
+            "Usage: python tools/find_overlaps.py "
             "<splits.txt> <spreadsplits.txt> <totalsmarket.txt> [threshold]"
         )
         sys.exit(1)

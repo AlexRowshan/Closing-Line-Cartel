@@ -18,9 +18,9 @@ from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from sse_starlette.sse import EventSourceResponse
 
-from scraper import scrape_vsin, scrape_oddstrader
+from scrapers import scrape_vsin, scrape_oddstrader
 from pipeline import run_pipeline, PROMPT_MAX_PLAYS
-from prompt_builder import build_prompt
+from prompt import build_prompt
 
 app = FastAPI(title="Sharp CBB Analyzer")
 

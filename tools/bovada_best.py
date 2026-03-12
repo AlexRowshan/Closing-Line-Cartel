@@ -1,10 +1,21 @@
+"""
+Given any OddsTrader market file (spreads or totals), prints team pairs
+where the best-priced book is Bovada.
+
+Usage:
+    python tools/bovada_best.py <file.txt>
+"""
+
 import sys
 import re
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python bovada_best.py <file.txt>")
+        print("Usage: python tools/bovada_best.py <file.txt>")
         sys.exit(1)
 
     filename = sys.argv[1]

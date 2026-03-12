@@ -4,41 +4,18 @@ VSiN Betting Splits Parser
 Parses raw text from VSiN's betting splits page and identifies spread/total lines
 where the handle% exceeds the bet% by at least a given threshold (default 25%).
 
-The raw copy-paste from VSiN produces a format where each value is on its own line:
-    Team1
-    Team2
-    spread1, spread2
-    spreadHandle1%, spreadHandle2%
-    spreadBets1%, spreadBets2%
-    total1, total2
-    totalHandle1%, totalHandle2%
-    totalBets1%, totalBets2%
-    ml1, ml2
-    mlHandle1%, mlHandle2%
-    mlBets1%, mlBets2%
-
-Moneyline data is completely ignored.
-
 Usage:
-    python vsin_splits_parser.py <splits_file.txt> [threshold]
+    python vsin_parser.py <splits_file.txt> [threshold]
 """
 
-import re
-import sys
 from dataclasses import dataclass
-from collections import defaultdict
 
+from .vsin_classifiers import (
+    clean_line, is_pct, parse_pct, is_number_line,
+    is_team_name, is_date_header, is_column_header,
+)
 
 MAX_HANDLE_PCT = 95
-WEEKDAY_ORDER = {
-    "Monday": 0,
-    "Tuesday": 1,
-    "Wednesday": 2,
-    "Thursday": 3,
-    "Friday": 4,
-    "Saturday": 5,
-    "Sunday": 6,
-}
 
 
 @dataclass
@@ -51,56 +28,6 @@ class SplitAlert:
     handle_pct: int
     bets_pct: int
     diff: int
-
-
-def clean_line(s: str) -> str:
-    return s.strip().rstrip("\t")
-
-
-def is_pct(s: str) -> bool:
-    return bool(re.match(r"^\d+%\s*$", s.strip()))
-
-
-def parse_pct(s: str) -> int:
-    return int(re.search(r"(\d+)", s).group(1))
-
-
-def is_number_line(s: str) -> bool:
-    """Check if a line is a numeric value (spread, total, or ML)."""
-    s = s.strip()
-    return bool(re.match(r"^[+-]?\d+\.?\d*$", s))
-
-
-def is_team_name(s: str) -> bool:
-    s = s.strip()
-    if not s:
-        return False
-    if is_pct(s) or is_number_line(s):
-        return False
-    if s == "-":
-        return False
-    # Reject known non-team header/title lines
-    lower = s.lower()
-    skip_phrases = [
-        "betting splits", "betting picks", "vsin", "subscribe",
-        "about the", "college basketball", "nba ", "nfl ", "mlb ",
-        "nhl ", "pro tools", "article calendar", "parlay calculator",
-    ]
-    for phrase in skip_phrases:
-        if phrase in lower:
-            return False
-    return bool(re.match(r"^[A-Za-z]", s))
-
-
-def is_date_header(s: str) -> bool:
-    return bool(re.match(
-        r"^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),?\s*\w+\s+\d+",
-        s.strip(), re.IGNORECASE
-    ))
-
-
-def is_column_header(s: str) -> bool:
-    return "Spread" in s and "Handle" in s and "Bets" in s
 
 
 def parse_splits(text: str, threshold: int = 25) -> list[SplitAlert]:
@@ -120,32 +47,23 @@ def parse_splits(text: str, threshold: int = 25) -> list[SplitAlert]:
             continue
 
         if is_column_header(line):
-            # Sometimes the date header is on the same line as column headers
-            # e.g. "Friday,Feb 13\tSpread\tHandle\tBets..."
-            # The date would have been captured above already
             i += 1
             continue
 
-        # Detect game: two consecutive team names
         if is_team_name(line) and i + 1 < len(lines) and is_team_name(lines[i + 1]):
             away_team = line.strip()
             home_team = lines[i + 1].strip()
 
-            # Collect the next data values (numbers and percentages)
             data_start = i + 2
             data_vals = []
             j = data_start
             while j < len(lines) and len(data_vals) < 18:
                 val = lines[j].strip()
-                # Stop if we hit another team pair or date
                 if is_date_header(val) or is_column_header(val):
                     break
-                # Check if this is a team name AND the next line is also a team name
-                # (indicates start of next game)
                 if is_team_name(val):
                     if j + 1 < len(lines) and is_team_name(lines[j + 1]):
                         break
-                # Accept numbers, percentages, and "-" (missing ML)
                 if is_number_line(val) or is_pct(val) or val == "-":
                     data_vals.append(val)
                 j += 1
@@ -201,7 +119,6 @@ def _process_game(
     except (IndexError, AttributeError):
         return alerts
 
-    # Spread checks
     diff_away = sh_away - sb_away
     if diff_away >= threshold and sh_away <= MAX_HANDLE_PCT:
         alerts.append(SplitAlert(
@@ -220,7 +137,6 @@ def _process_game(
             handle_pct=sh_home, bets_pct=sb_home, diff=diff_home,
         ))
 
-    # Total checks
     diff_over = th_over - tb_over
     if diff_over >= threshold and th_over <= MAX_HANDLE_PCT:
         alerts.append(SplitAlert(
@@ -242,50 +158,14 @@ def _process_game(
     return alerts
 
 
-def format_alerts(alerts: list[SplitAlert]) -> str:
-    if not alerts:
-        return "No discrepancies found at the given threshold."
-
-    header = (
-        f"{'Date':<18} {'Matchup':<45} {'Market':<8} "
-        f"{'Side':<35} {'Handle%':>8} {'Bets%':>6} {'Diff':>6}"
-    )
-    sep = "-" * len(header)
-    grouped_alerts: dict[str, list[SplitAlert]] = defaultdict(list)
-
-    for a in alerts:
-        weekday = a.date.split(",", 1)[0].strip() if "," in a.date else a.date.strip()
-        grouped_alerts[weekday].append(a)
-
-    sorted_weekdays = sorted(
-        grouped_alerts.keys(),
-        key=lambda day: (WEEKDAY_ORDER.get(day, 99), day),
-    )
-
-    rows: list[str] = []
-    for idx, weekday in enumerate(sorted_weekdays):
-        if idx > 0:
-            rows.append("")
-        rows.append(f"=== {weekday} ===")
-        rows.append(header)
-        rows.append(sep)
-
-        day_alerts = sorted(grouped_alerts[weekday], key=lambda a: a.diff, reverse=True)
-        for a in day_alerts:
-            matchup = f"{a.away_team} @ {a.home_team}"
-            if len(matchup) > 43:
-                matchup = matchup[:43]
-            rows.append(
-                f"{a.date:<18} {matchup:<45} {a.market:<8} "
-                f"{a.side:<35} {a.handle_pct:>7}% {a.bets_pct:>5}% {a.diff:>5}%"
-            )
-
-    return "\n".join(rows)
-
-
 if __name__ == "__main__":
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from parsers.vsin_formatter import format_alerts
+
     if len(sys.argv) < 2:
-        print("Usage: python vsin_splits_parser.py <splits_file.txt> [threshold]")
+        print("Usage: python vsin_parser.py <splits_file.txt> [threshold]")
         print("  threshold: minimum handle% - bets% difference (default: 25)")
         sys.exit(1)
 
