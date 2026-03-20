@@ -19,17 +19,15 @@ def _format_line_label(play) -> str:
       "Under 135.5 (-110)"
       "San Francisco +15.0 (-115)"
     """
-    alert = play.alert
-
-    if alert.market == "Total":
+    if play.market == "Total":
         if play.bovada_line:
             number = play.bovada_line
             odds = play.bovada_odds or "-110"
             direction = play.bovada_direction.capitalize() if play.bovada_direction else (
-                "Over" if alert.side.lower().startswith("over") else "Under"
+                "Over" if play.side.lower().startswith("over") else "Under"
             )
         else:
-            m = re.match(r"(Over|Under)\s+([\d.]+)", alert.side, re.I)
+            m = re.match(r"(Over|Under)\s+([\d.]+)", play.side, re.I)
             direction = m.group(1).capitalize() if m else "Over"
             number = m.group(2) if m else ""
             odds = "-110"
@@ -37,12 +35,12 @@ def _format_line_label(play) -> str:
 
     else:  # Spread
         if play.bovada_line:
-            team_name = _clean_team_name(re.sub(r"\s+[+-][\d.]+$", "", alert.side).strip())
+            team_name = _clean_team_name(re.sub(r"\s+[+-][\d.]+$", "", play.side).strip())
             line = play.bovada_line
             odds = play.bovada_odds or "-110"
         else:
-            team_name = _clean_team_name(re.sub(r"\s+[+-][\d.]+$", "", alert.side).strip())
-            m = re.search(r"([+-][\d.]+)$", alert.side)
+            team_name = _clean_team_name(re.sub(r"\s+[+-][\d.]+$", "", play.side).strip())
+            m = re.search(r"([+-][\d.]+)$", play.side)
             line = m.group(1) if m else ""
             odds = "-110"
 
@@ -55,9 +53,8 @@ def _format_line_label(play) -> str:
 def _build_games_section(plays: list) -> str:
     lines = []
     for i, play in enumerate(plays, 1):
-        alert = play.alert
-        matchup = f"{_clean_team_name(alert.away_team)} @ {_clean_team_name(alert.home_team)}"
-        market_label = "Total Options" if alert.market == "Total" else "Spread Options"
+        matchup = f"{_clean_team_name(play.away_team)} @ {_clean_team_name(play.home_team)}"
+        market_label = "Total Options" if play.market == "Total" else "Spread Options"
         line_label = _format_line_label(play)
 
         lines.append(f"### Game {i}: {matchup}")

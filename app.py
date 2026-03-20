@@ -18,7 +18,8 @@ from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from sse_starlette.sse import EventSourceResponse
 
-from scrapers import scrape_vsin, scrape_oddstrader
+from scrapers import scrape_vsin, scrape_oddstrader, scrape_tsi
+from parsers import parse_tsi
 from pipeline import run_pipeline, PROMPT_MAX_PLAYS
 from prompt import build_prompt
 
@@ -118,10 +119,35 @@ async def analyze(request: Request, sport: str = "cbb"):
             if await request.is_disconnected():
                 return
 
-            # --- Step 3: Analysis ---
-            yield _sse_event("progress", {"message": "Running sharp money analysis..."})
+            # --- Step 2b: TSI Projections (optional, non-blocking) ---
+            yield _sse_event("progress", {"message": "Fetching TSI projections..."})
+            tsi_projections, tsi_bets = [], []
             try:
-                plays = run_pipeline(dk_text, circa_text, spreads_text, totals_text, sport=sport)
+                tsi_results = await asyncio.wait_for(scrape_tsi(), timeout=90)
+                for url, raw_text in tsi_results:
+                    projs, bets = parse_tsi(raw_text)
+                    tsi_projections.extend(projs)
+                    tsi_bets.extend(bets)
+                if tsi_projections:
+                    yield _sse_event("progress", {
+                        "message": f"TSI: {len(tsi_projections)} projections, {len(tsi_bets)} bets loaded."
+                    })
+                else:
+                    yield _sse_event("progress", {"message": "No TSI projections found for today."})
+            except Exception as e:
+                yield _sse_event("progress", {"message": f"TSI fetch failed (non-fatal): {e}"})
+
+            if await request.is_disconnected():
+                return
+
+            # --- Step 3: Analysis ---
+            yield _sse_event("progress", {"message": "Running game-driven analysis..."})
+            try:
+                plays = run_pipeline(
+                    dk_text, circa_text, spreads_text, totals_text,
+                    tsi_projections=tsi_projections, tsi_bets=tsi_bets,
+                    sport=sport,
+                )
             except Exception as e:
                 yield _sse_event("error", {"message": f"Analysis failed: {e}"})
                 return
@@ -131,7 +157,7 @@ async def analyze(request: Request, sport: str = "cbb"):
                     "plays": [],
                     "prompt": "",
                     "message": (
-                        "No sharp indicators found for today's slate. "
+                        "No games with sharp indicators or TSI edges found for today's slate. "
                         "Try again later — splits data builds up closer to game time."
                     ),
                 })

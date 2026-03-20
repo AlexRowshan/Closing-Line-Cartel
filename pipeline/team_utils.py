@@ -32,17 +32,31 @@ def _normalize_team(name: str) -> str:
     """Lowercase + strip + apply common abbreviation expansions."""
     n = _clean_team_name(name).lower()
     n = re.sub(r"^(the|a|an)\s+", "", n)
+    # Strip parenthetical qualifiers like "(NY)", "(FL)", "(OH)"
+    n = re.sub(r"\s*\([^)]*\)", "", n)
+    # Strip apostrophes: "St. John's" → "st johns"
+    n = n.replace("'", "")
     n = n.replace(".", "")
     n = n.replace("-", " ")
     n = " ".join(n.split())
+    # Normalize "saint" → "st" before abbreviation expansion
+    n = re.sub(r"\bsaint\b", "st", n)
     n = re.sub(r"^csu\b", "cal state", n)
     n = re.sub(r"\bst$", "state", n)
-    # Collapse directional prefixes to single letter so both
-    # "S Utah" (VSIN) and "Southern Utah" (OddsTrader) normalize the same.
-    n = re.sub(r"^north(?:ern)?\s", "n ", n)
-    n = re.sub(r"^south(?:ern)?\s", "s ", n)
-    n = re.sub(r"^east(?:ern)?\s", "e ", n)
-    n = re.sub(r"^west(?:ern)?\s", "w ", n)
+    # Expand single-letter directional abbreviations to full words:
+    # "S Utah" → "south utah", "W Kentucky" → "west kentucky", etc.
+    n = re.sub(r"^n\s", "north ", n)
+    n = re.sub(r"^s\s", "south ", n)
+    n = re.sub(r"^e\s", "east ", n)
+    n = re.sub(r"^w\s", "west ", n)
+    # Strip "-ern" suffix so "Northern"→"north", "Southern"→"south", etc.
+    # This lets "S Utah"→"south utah" match "Southern Utah"→"south utah",
+    # while "Southern" (alone) stays "south" and prefix-matches "south u".
+    n = re.sub(r"^(north|south|east|west)ern\b", r"\1", n)
+    # Normalize trailing "u" / "univ" to "university" so
+    # "Southern U" (VSIN) matches "Southern University" (OddsTrader).
+    n = re.sub(r"\bu$", "university", n)
+    n = re.sub(r"\buniv$", "university", n)
     # Normalize "UT <school>" → "texas <school>" so VSIN's
     # "Texas-Arlington" matches OddsTrader's "UT Arlington", etc.
     n = re.sub(r"^ut\s", "texas ", n)
@@ -67,6 +81,12 @@ def _teams_match(vsin_name: str, oddstrader_name: str) -> bool:
     if shorter and longer[:len(shorter)] == shorter:
         return True
     return False
+
+
+def _game_key(team_a: str, team_b: str) -> tuple[str, str]:
+    """Canonical key for deduplicating games across sources."""
+    a, b = _normalize_team(team_a), _normalize_team(team_b)
+    return tuple(sorted([a, b]))
 
 
 def _alert_key(alert) -> tuple:

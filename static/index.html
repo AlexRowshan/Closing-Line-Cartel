@@ -197,6 +197,7 @@
     .tier-4 { background: rgba(234,179,8,0.15);  color: var(--yellow); }
     .tier-5 { background: rgba(168,85,247,0.15); color: #a855f7; }
     .tier-6 { background: rgba(126,126,126,0.15);color: var(--muted); }
+    .tier-tsi { background: rgba(20,184,166,0.15); color: #14b8a6; }
 
     /* Tier legend */
     #tier-legend {
@@ -435,6 +436,7 @@
       <div class="legend-item"><span class="legend-num">T4</span><span class="tier-badge tier-4">DK + Bovada Best</span></div>
       <div class="legend-item"><span class="legend-num">T5</span><span class="tier-badge tier-5">Circa Only</span></div>
       <div class="legend-item"><span class="legend-num">T6</span><span class="tier-badge tier-6">DK Only</span></div>
+      <div class="legend-item"><span class="legend-num">TSI</span><span class="tier-badge tier-tsi">TSI Only</span></div>
     </div>
 
     <div class="plays-table-wrap">
@@ -449,8 +451,11 @@
             <th>Bets%</th>
             <th id="th-diff" onclick="toggleSort('diff')" style="cursor:pointer;user-select:none" title="Click to sort by Diff%">Diff <span id="sort-arrow-diff"></span></th>
             <th>Bovada Line</th>
+            <th>TSI Edge</th>
+            <th>TSI Pick</th>
             <th>Conviction</th>
             <th id="th-score" onclick="toggleSort('score')" style="cursor:pointer;user-select:none" title="(5 - tier) × 30 + diff — higher is better. Click to sort.">Confidence Score <span id="sort-arrow-score">▼</span></th>
+            <th>Source</th>
             <th>Prompt</th>
           </tr>
         </thead>
@@ -637,8 +642,8 @@
   function getSortedPlays() {
     const mul = _sortDir === 'desc' ? -1 : 1;
     return [..._allPlays].sort((a, b) => {
-      const valA = _sortKey === 'score' ? a.confidence_score : a.diff;
-      const valB = _sortKey === 'score' ? b.confidence_score : b.diff;
+      const valA = _sortKey === 'score' ? a.confidence_score : (a.diff ?? -Infinity);
+      const valB = _sortKey === 'score' ? b.confidence_score : (b.diff ?? -Infinity);
       return mul * (valA - valB);
     });
   }
@@ -658,8 +663,8 @@
       const globalIdx = start + localIdx;
       const inPrompt = play.in_prompt;
       const tier = play.conviction_tier;
-      const tierLabel = TIER_LABELS[tier] || `Tier ${tier}`;
-      const tierClass = TIER_CLASSES[tier] || 'tier-4';
+      const tierLabel = tier != null ? (TIER_LABELS[tier] || `Tier ${tier}`) : 'TSI Only';
+      const tierClass = tier != null ? (TIER_CLASSES[tier] || 'tier-4') : 'tier-tsi';
 
       let bovadaCell = play.bovada_line
         ? `${play.bovada_direction ? play.bovada_direction.charAt(0).toUpperCase() + play.bovada_direction.slice(1) + ' ' : ''}${play.bovada_line} (${play.bovada_odds})`
@@ -674,18 +679,27 @@
         ? '<span class="in-prompt-badge">IN PROMPT</span>'
         : '<span style="color:var(--muted);font-size:0.75rem">—</span>';
 
+      // TSI Edge cell - color coded
+      const tsiEdge = play.tsi_edge || 0;
+      const tsiEdgeStr = tsiEdge !== 0 ? (tsiEdge > 0 ? '+' : '') + tsiEdge.toFixed(1) : '—';
+      const tsiEdgeStyle = tsiEdge > 1.5 ? 'color:var(--green)' : tsiEdge < -1.5 ? 'color:var(--red)' : '';
+      const tsiBetStr = play.is_tsi_bet ? '<span style="color:var(--green);font-weight:700">✓</span>' : '';
+
       const row = `
         <tr class="${inPrompt ? 'in-prompt' : ''}">
           <td>${globalIdx + 1}</td>
           <td>${escHtml(matchup)}</td>
           <td>${escHtml(play.market)}</td>
           <td>${escHtml(play.side)}</td>
-          <td>${play.handle_pct}%</td>
-          <td>${play.bets_pct}%</td>
-          <td><span class="diff-pill">+${play.diff}%</span></td>
+          <td>${play.handle_pct != null ? play.handle_pct + '%' : '<span style="color:var(--muted)">--</span>'}</td>
+          <td>${play.bets_pct != null ? play.bets_pct + '%' : '<span style="color:var(--muted)">--</span>'}</td>
+          <td>${play.diff != null ? '<span class="diff-pill">+' + play.diff + '%</span>' : '<span style="color:var(--muted)">--</span>'}</td>
           <td>${bovadaCell}</td>
+          <td style="${tsiEdgeStyle}">${tsiEdgeStr}</td>
+          <td>${tsiBetStr}</td>
           <td><span class="tier-badge ${tierClass}">${escHtml(tierLabel)}</span></td>
           <td class="score-cell">${play.confidence_score}</td>
+          <td><span style="font-size:0.72rem;color:var(--muted);text-transform:uppercase">${escHtml(play.source || 'splits')}</span></td>
           <td>${promptBadge}</td>
         </tr>`;
       tbody.insertAdjacentHTML('beforeend', row);
