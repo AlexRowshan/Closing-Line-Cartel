@@ -37,15 +37,13 @@ You are a professional CBB sharp handicapper with 15 years of experience. Analyz
 
 Analyze each option through these factors:
 
-**Factor 1: Advanced Efficiency Metrics** - Adjusted offensive/defensive efficiency per 100 possessions, turnover rate, offensive rebounding rate
+**Factor 1: Advanced Efficiency Metrics** - Rebounding Rate, turnover rate, adjusted offensive/defensive efficiency per 100 possessions, roster experience (age/eligibility)
 
 **Factor 2: Pace and Tempo Dynamics** - Possessions per game, efficiency vs speed correlation, half-court vs transition effectiveness
 
 **Factor 3: Situational Spots** - Let-down games after emotional wins, travel fatigue from road stretches, time zone shifts
 
-**Factor 4: Home/Road Splits** - Venue-specific advantages, shooting percentage variance by location
-
-**Factor 5: Roster Depth & Injuries** - Primary ball-handler status, bench talent drop-off, foul trouble risks for key players
+**Factor 4: Roster Depth & Injuries** - Primary ball-handler status, bench talent drop-off, foul trouble risks for key players
 
 ---
 
@@ -71,7 +69,7 @@ Analyze each option through these factors:
 Format each elimination like this:
 
 **Option [X]: [Exact option text]**
-- **Why Eliminated:** [2-3 sentences citing which of the 5 factors were weak or contradicted this bet]
+- **Why Eliminated:** [2-3 sentences citing which of the 4 factors were weak or contradicted this bet]
 
 ---
 
