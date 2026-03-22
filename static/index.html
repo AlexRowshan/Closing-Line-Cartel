@@ -666,8 +666,17 @@
       const tierLabel = tier != null ? (TIER_LABELS[tier] || `Tier ${tier}`) : 'TSI Only';
       const tierClass = tier != null ? (TIER_CLASSES[tier] || 'tier-4') : 'tier-tsi';
 
+      let bovadaDir = '';
+      if (play.bovada_line) {
+        if (play.market === 'Total') {
+          // Derive direction from the sharp side, not the OddsTrader entry
+          bovadaDir = play.side.toLowerCase().startsWith('over') ? 'Over' : 'Under';
+        } else if (play.bovada_direction) {
+          bovadaDir = play.bovada_direction.charAt(0).toUpperCase() + play.bovada_direction.slice(1);
+        }
+      }
       let bovadaCell = play.bovada_line
-        ? `${play.bovada_direction ? play.bovada_direction.charAt(0).toUpperCase() + play.bovada_direction.slice(1) + ' ' : ''}${play.bovada_line} (${play.bovada_odds})`
+        ? `${bovadaDir ? bovadaDir + ' ' : ''}${play.bovada_line} (${play.bovada_odds})`
         : '<span style="color:var(--muted)">N/A</span>';
 
       if (play.is_bovada_best_price) {

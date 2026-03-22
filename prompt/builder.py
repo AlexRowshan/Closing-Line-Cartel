@@ -23,9 +23,8 @@ def _format_line_label(play) -> str:
         if play.bovada_line:
             number = play.bovada_line
             odds = play.bovada_odds or "-110"
-            direction = play.bovada_direction.capitalize() if play.bovada_direction else (
-                "Over" if play.side.lower().startswith("over") else "Under"
-            )
+            # Always derive direction from the sharp side, not the OddsTrader entry
+            direction = "Over" if play.side.lower().startswith("over") else "Under"
         else:
             m = re.match(r"(Over|Under)\s+([\d.]+)", play.side, re.I)
             direction = m.group(1).capitalize() if m else "Over"
