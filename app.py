@@ -119,23 +119,24 @@ async def analyze(request: Request, sport: str = "cbb"):
             if await request.is_disconnected():
                 return
 
-            # --- Step 2b: TSI Projections (optional, non-blocking) ---
-            yield _sse_event("progress", {"message": "Fetching TSI projections..."})
+            # --- Step 2b: TSI Projections (CBB only, optional, non-blocking) ---
             tsi_projections, tsi_bets = [], []
-            try:
-                tsi_results = await asyncio.wait_for(scrape_tsi(), timeout=90)
-                for url, raw_text in tsi_results:
-                    projs, bets = parse_tsi(raw_text)
-                    tsi_projections.extend(projs)
-                    tsi_bets.extend(bets)
-                if tsi_projections:
-                    yield _sse_event("progress", {
-                        "message": f"TSI: {len(tsi_projections)} projections, {len(tsi_bets)} bets loaded."
-                    })
-                else:
-                    yield _sse_event("progress", {"message": "No TSI projections found for today."})
-            except Exception as e:
-                yield _sse_event("progress", {"message": f"TSI fetch failed (non-fatal): {e}"})
+            if sport == "cbb":
+                yield _sse_event("progress", {"message": "Fetching TSI projections..."})
+                try:
+                    tsi_results = await asyncio.wait_for(scrape_tsi(), timeout=90)
+                    for url, raw_text in tsi_results:
+                        projs, bets = parse_tsi(raw_text)
+                        tsi_projections.extend(projs)
+                        tsi_bets.extend(bets)
+                    if tsi_projections:
+                        yield _sse_event("progress", {
+                            "message": f"TSI: {len(tsi_projections)} projections, {len(tsi_bets)} bets loaded."
+                        })
+                    else:
+                        yield _sse_event("progress", {"message": "No TSI projections found for today."})
+                except Exception as e:
+                    yield _sse_event("progress", {"message": f"TSI fetch failed (non-fatal): {e}"})
 
             if await request.is_disconnected():
                 return

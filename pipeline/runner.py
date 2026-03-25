@@ -90,10 +90,12 @@ def _find_circa_only(dk_alerts: list[SplitAlert], circa_alerts: list[SplitAlert]
 def _splits_confidence(tier: int, diff: int) -> int:
     """
     Splits score in range 0-40.
-    Tier base: T1=35, T2=28, T3=20, T4=14, T5=7, T6=7.
+    Tier base: T1=35, T2=28, T3=20, T4=14, T5=11, T6=7.
+    Circa-only gets a 4-point premium over DK-only, so a 20% Circa-only
+    signal grades roughly the same as a 40% DK-only signal.
     Diff bonus: diff / 5.
     """
-    tier_bases = {1: 35, 2: 28, 3: 20, 4: 14, 5: 7, 6: 7}
+    tier_bases = {1: 35, 2: 28, 3: 20, 4: 14, 5: 11, 6: 7}
     tier_base = tier_bases.get(tier, 7)
     diff_bonus = diff / 5
     return max(0, min(40, round(tier_base + diff_bonus)))
