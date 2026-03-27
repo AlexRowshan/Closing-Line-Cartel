@@ -18,8 +18,9 @@ from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from sse_starlette.sse import EventSourceResponse
 
-from scrapers import scrape_vsin, scrape_oddstrader, scrape_tsi
-from parsers import parse_tsi
+from scrapers import scrape_vsin, scrape_oddstrader, scrape_tsi, scrape_makinen
+from scrapers.tsi_scraper import FALLBACK_URL as TSI_FALLBACK_URL
+from parsers import parse_tsi, parse_makinen
 from pipeline import run_pipeline, PROMPT_MAX_PLAYS
 from prompt import build_prompt
 
@@ -125,18 +126,50 @@ async def analyze(request: Request, sport: str = "cbb"):
                 yield _sse_event("progress", {"message": "Fetching TSI projections..."})
                 try:
                     tsi_results = await asyncio.wait_for(scrape_tsi(), timeout=90)
+                    used_fallback = any(url == TSI_FALLBACK_URL for url, _ in tsi_results)
                     for url, raw_text in tsi_results:
                         projs, bets = parse_tsi(raw_text)
                         tsi_projections.extend(projs)
                         tsi_bets.extend(bets)
                     if tsi_projections:
+                        source_note = " (Sweet 16 fallback URL)" if used_fallback else ""
                         yield _sse_event("progress", {
-                            "message": f"TSI: {len(tsi_projections)} projections, {len(tsi_bets)} bets loaded."
+                            "message": f"TSI: {len(tsi_projections)} projections, {len(tsi_bets)} bets loaded{source_note}."
                         })
                     else:
                         yield _sse_event("progress", {"message": "No TSI projections found for today."})
                 except Exception as e:
                     yield _sse_event("progress", {"message": f"TSI fetch failed (non-fatal): {e}"})
+
+            elif sport == "nba":
+                yield _sse_event("progress", {"message": "Fetching Makinen NBA projections..."})
+                try:
+                    mak_url, mak_text = await asyncio.wait_for(
+                        scrape_makinen(), timeout=90
+                    )
+                    if mak_text:
+                        projs, bets = parse_makinen(mak_text)
+                        tsi_projections.extend(projs)
+                        tsi_bets.extend(bets)
+                        if tsi_projections:
+                            yield _sse_event("progress", {
+                                "message": (
+                                    f"Makinen: {len(tsi_projections)} projections, "
+                                    f"{len(tsi_bets)} bets loaded."
+                                )
+                            })
+                        else:
+                            yield _sse_event("progress", {
+                                "message": "No Makinen projections found for today."
+                            })
+                    else:
+                        yield _sse_event("progress", {
+                            "message": "Makinen article not yet published for today."
+                        })
+                except Exception as e:
+                    yield _sse_event("progress", {
+                        "message": f"Makinen fetch failed (non-fatal): {e}"
+                    })
 
             if await request.is_disconnected():
                 return

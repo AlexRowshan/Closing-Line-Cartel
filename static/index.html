@@ -436,7 +436,7 @@
       <div class="legend-item"><span class="legend-num">T4</span><span class="tier-badge tier-4">DK + Bovada Best</span></div>
       <div class="legend-item"><span class="legend-num">T5</span><span class="tier-badge tier-5">Circa Only</span></div>
       <div class="legend-item"><span class="legend-num">T6</span><span class="tier-badge tier-6">DK Only</span></div>
-      <div class="legend-item"><span class="legend-num">TSI</span><span class="tier-badge tier-tsi">TSI Only</span></div>
+      <div class="legend-item" id="legend-tsi"><span class="legend-num">TSI</span><span class="tier-badge tier-tsi">TSI Only</span></div>
     </div>
 
     <div class="plays-table-wrap">
@@ -451,8 +451,8 @@
             <th>Bets%</th>
             <th id="th-diff" onclick="toggleSort('diff')" style="cursor:pointer;user-select:none" title="Click to sort by Diff%">Diff <span id="sort-arrow-diff"></span></th>
             <th>Bovada Line</th>
-            <th>TSI Edge</th>
-            <th>TSI Pick</th>
+            <th id="th-tsi-edge">TSI Edge</th>
+            <th id="th-tsi-pick">TSI Pick</th>
             <th>Conviction</th>
             <th id="th-score" onclick="toggleSort('score')" style="cursor:pointer;user-select:none" title="(5 - tier) × 30 + diff — higher is better. Click to sort.">Confidence Score <span id="sort-arrow-score">▼</span></th>
             <th>Source</th>
@@ -526,6 +526,13 @@
     const meta = SPORT_META[sport];
     document.getElementById('page-title').textContent = meta.title;
     document.getElementById('page-subtitle').textContent = meta.subtitle;
+
+    // Update projection labels (TSI for CBB, Makinen for NBA)
+    const projLabel = sport === 'nba' ? 'Makinen' : 'TSI';
+    document.getElementById('th-tsi-edge').textContent = projLabel + ' Edge';
+    document.getElementById('th-tsi-pick').textContent = projLabel + ' Pick';
+    const legendEl = document.getElementById('legend-tsi');
+    legendEl.innerHTML = `<span class="legend-num">${projLabel}</span><span class="tier-badge tier-tsi">${projLabel} Only</span>`;
 
     // Clear any stale results from the previous sport
     resetUI();
@@ -663,7 +670,8 @@
       const globalIdx = start + localIdx;
       const inPrompt = play.in_prompt;
       const tier = play.conviction_tier;
-      const tierLabel = tier != null ? (TIER_LABELS[tier] || `Tier ${tier}`) : 'TSI Only';
+      const projName = _selectedSport === 'nba' ? 'Makinen' : 'TSI';
+      const tierLabel = tier != null ? (TIER_LABELS[tier] || `Tier ${tier}`) : `${projName} Only`;
       const tierClass = tier != null ? (TIER_CLASSES[tier] || 'tier-4') : 'tier-tsi';
 
       let bovadaDir = '';
@@ -708,7 +716,7 @@
           <td>${tsiBetStr}</td>
           <td><span class="tier-badge ${tierClass}">${escHtml(tierLabel)}</span></td>
           <td class="score-cell">${play.confidence_score}</td>
-          <td><span style="font-size:0.72rem;color:var(--muted);text-transform:uppercase">${escHtml(play.source || 'splits')}</span></td>
+          <td><span style="font-size:0.72rem;color:var(--muted);text-transform:uppercase">${escHtml(_selectedSport === 'nba' ? (play.source || 'splits').replace('tsi', 'makinen') : (play.source || 'splits'))}</span></td>
           <td>${promptBadge}</td>
         </tr>`;
       tbody.insertAdjacentHTML('beforeend', row);

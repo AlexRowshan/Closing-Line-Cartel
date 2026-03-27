@@ -15,6 +15,10 @@ from .browser_utils import BROWSER_ARGS, _new_page, _get_inner_text
 
 AUTHOR_URL = "https://vsin.com/author/tyler-shoemaker/"
 
+# Fallback URL used when no dated article is found on the author page
+# (e.g. tournament rounds where VSIN uses a custom URL instead of a daily post).
+FALLBACK_URL = "https://vsin.com/college-basketball/mens-college-basketball-best-bets-odds-and-predictions-for-ncaa-sweet-sixteen/"
+
 # Block heavy resources — we only need plain text from these article pages.
 _TSI_BLOCK_TYPES = {"image", "media", "font", "stylesheet"}
 
@@ -79,6 +83,11 @@ async def _find_tsi_article_urls(
         text_lower = text.lower()
         if "college basketball" not in text_lower:
             continue
+        # Only accept articles that are clearly Tyler's TSI picks post
+        # (avoids picking up other authors' articles that appear on the same page).
+        href_lower = href.lower()
+        if "tsi" not in text_lower and "t shoe" not in text_lower and "tyler-shoemaker" not in href_lower:
+            continue
         for target_date in target_dates:
             if _title_matches_date(text, target_date):
                 if href not in urls:
@@ -126,8 +135,11 @@ async def scrape_tsi(
             await page.close()
 
             if not urls:
-                print(f"[tsi_scraper] No TSI articles found for {target_dates}")
-                return []
+                print(
+                    f"[tsi_scraper] No TSI articles found for {target_dates}. "
+                    f"Falling back to hardcoded URL: {FALLBACK_URL}"
+                )
+                urls = [FALLBACK_URL]
 
             print(f"[tsi_scraper] Found {len(urls)} article(s): {urls}")
 

@@ -2,6 +2,7 @@ from .vsin_parser import SplitAlert, parse_splits
 from .vsin_formatter import format_alerts
 from .oddstrader_parser import BovadaEntry, parse_oddstrader
 from .tsi_parser import TSIProjection, TSIBet, parse_tsi
+from .makinen_parser import parse_makinen
 
 __all__ = [
     "SplitAlert",
@@ -12,4 +13,5 @@ __all__ = [
     "TSIProjection",
     "TSIBet",
     "parse_tsi",
+    "parse_makinen",
 ]
