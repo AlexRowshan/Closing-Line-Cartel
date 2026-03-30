@@ -71,15 +71,14 @@ async def analyze(request: Request, sport: str = "cbb"):
             # --- Step 1: VSIN ---
             yield _sse_event("progress", {"message": "Fetching VSIN DraftKings splits..."})
             try:
-                dk_text, circa_text = await asyncio.wait_for(
+                dk_alerts, circa_alerts = await asyncio.wait_for(
                     scrape_vsin(sport), timeout=30
                 )
             except asyncio.TimeoutError:
                 yield _sse_event("error", {
                     "message": (
-                        "Timed out after 30s fetching VSIN splits "
-                        "(stuck on DraftKings or Circa Sports page). "
-                        "The VSIN site may be slow or down — try again."
+                        "Timed out after 30s fetching VSIN splits. "
+                        "The VSIN/DK API may be slow or down — try again."
                     )
                 })
                 return
@@ -87,12 +86,12 @@ async def analyze(request: Request, sport: str = "cbb"):
                 yield _sse_event("error", {"message": f"Failed to fetch VSIN data: {e}"})
                 return
 
-            if not circa_text.strip():
+            if not circa_alerts:
                 yield _sse_event("progress", {
                     "message": "Circa Sports data unavailable — will use DraftKings only."
                 })
             else:
-                yield _sse_event("progress", {"message": "VSIN Circa Sports splits fetched."})
+                yield _sse_event("progress", {"message": f"VSIN splits fetched: {len(dk_alerts)} DK alerts, {len(circa_alerts)} Circa alerts."})
 
             # Check if client disconnected
             if await request.is_disconnected():
@@ -178,7 +177,7 @@ async def analyze(request: Request, sport: str = "cbb"):
             yield _sse_event("progress", {"message": "Running game-driven analysis..."})
             try:
                 plays = run_pipeline(
-                    dk_text, circa_text, spreads_text, totals_text,
+                    dk_alerts, circa_alerts, spreads_text, totals_text,
                     tsi_projections=tsi_projections, tsi_bets=tsi_bets,
                     sport=sport,
                 )

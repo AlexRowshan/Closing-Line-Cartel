@@ -92,12 +92,11 @@ def _game_key(team_a: str, team_b: str) -> tuple[str, str]:
 
 
 def _alert_key(alert) -> tuple:
-    away = _clean_team_name(alert.away_team).lower()
-    home = _clean_team_name(alert.home_team).lower()
+    gk = _game_key(alert.away_team, alert.home_team)
     if alert.market == "Spread":
         raw_team = re.sub(r"\s+[+-][\d.]+$", "", alert.side).strip()
-        team = _clean_team_name(raw_team).lower()
-        return (away, home, "spread", team)
+        team = _normalize_team(raw_team)
+        return (gk[0], gk[1], "spread", team)
     else:
         direction = "over" if alert.side.lower().startswith("over") else "under"
-        return (away, home, direction)
+        return (gk[0], gk[1], direction)

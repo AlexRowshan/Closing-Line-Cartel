@@ -274,8 +274,8 @@ def _score_tsi_standalone(
 # ---------------------------------------------------------------------------
 
 def run_pipeline(
-    dk_text: str,
-    circa_text: str,
+    dk_input,
+    circa_input,
     spreads_text: str,
     totals_text: str,
     tsi_projections: list[TSIProjection] | None = None,
@@ -289,6 +289,8 @@ def run_pipeline(
     Builds a master game registry from all sources, scores each game with
     independent modules (splits + TSI), and returns ALL qualifying plays
     sorted by confidence_score (highest first).
+
+    dk_input / circa_input: either raw text (str) or pre-parsed list[SplitAlert].
     """
     config = get_config(sport)
     set_team_abbrev(config["team_abbrev"])
@@ -300,8 +302,16 @@ def run_pipeline(
     tsi_bets = tsi_bets or []
 
     # --- Parse all sources ---
-    dk_alerts = parse_splits(dk_text, threshold)
-    circa_alerts = parse_splits(circa_text, threshold) if circa_text.strip() else []
+    if isinstance(dk_input, str):
+        dk_alerts = parse_splits(dk_input, threshold)
+    else:
+        dk_alerts = dk_input or []
+
+    if isinstance(circa_input, str):
+        circa_alerts = parse_splits(circa_input, threshold) if circa_input.strip() else []
+    else:
+        circa_alerts = circa_input or []
+
     bovada_spreads, bovada_totals = parse_oddstrader(spreads_text, totals_text)
 
     dk_alerts = _filter_future_games(dk_alerts)
