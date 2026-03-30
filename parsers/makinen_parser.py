@@ -19,11 +19,69 @@ from .tsi_parser import TSIProjection, TSIBet
 
 
 # ---------------------------------------------------------------------------
+# Team name normalization (Makinen ALL-CAPS → pipeline-compatible names)
+# ---------------------------------------------------------------------------
+
+# Maps Makinen's ALL-CAPS city names to the pipeline's expected format.
+# The pipeline's _normalize_team() + _teams_match() handle the rest
+# (prefix matching, abbreviation expansion, etc.)
+_MAKINEN_TO_PIPELINE = {
+    "CHICAGO": "Chicago Bulls",
+    "PHILADELPHIA": "Philadelphia 76ers",
+    "ATLANTA": "Atlanta Hawks",
+    "DETROIT": "Detroit Pistons",
+    "LA LAKERS": "Los Angeles Lakers",
+    "INDIANA": "Indiana Pacers",
+    "OKLAHOMA CITY": "Oklahoma City Thunder",
+    "BOSTON": "Boston Celtics",
+    "MIAMI": "Miami Heat",
+    "CLEVELAND": "Cleveland Cavaliers",
+    "SAN ANTONIO": "San Antonio Spurs",
+    "MEMPHIS": "Memphis Grizzlies",
+    "WASHINGTON": "Washington Wizards",
+    "UTAH": "Utah Jazz",
+    "HOUSTON": "Houston Rockets",
+    "MINNESOTA": "Minnesota Timberwolves",
+    "MILWAUKEE": "Milwaukee Bucks",
+    "PORTLAND": "Portland Trail Blazers",
+    "DALLAS": "Dallas Mavericks",
+    "DENVER": "Denver Nuggets",
+    "BROOKLYN": "Brooklyn Nets",
+    "GOLDEN STATE": "Golden State Warriors",
+    "TORONTO": "Toronto Raptors",
+    "LA CLIPPERS": "Los Angeles Clippers",
+    "SACRAMENTO": "Sacramento Kings",
+    "ORLANDO": "Orlando Magic",
+    "NEW YORK": "New York Knicks",
+    "NEW ORLEANS": "New Orleans Pelicans",
+    "PHOENIX": "Phoenix Suns",
+    "CHARLOTTE": "Charlotte Hornets",
+}
+
+
+def _to_pipeline_name(makinen_name: str) -> str:
+    """Convert Makinen ALL-CAPS team name to pipeline-compatible name."""
+    upper = makinen_name.strip().upper()
+    return _MAKINEN_TO_PIPELINE.get(upper, makinen_name.strip().title())
+
+
+# ---------------------------------------------------------------------------
 # Section isolation
 # ---------------------------------------------------------------------------
 
+def _normalize_apostrophes(text: str) -> str:
+    """Replace curly/smart apostrophes with straight ones."""
+    return text.replace("\u2018", "'").replace("\u2019", "'").replace("\u201c", '"').replace("\u201d", '"')
+
+
 def _extract_ratings_section(raw_text: str) -> str:
-    """Slice text below 'Today's NBA Strength Ratings' header."""
+    """
+    Strictly slice text below 'Today's NBA Strength Ratings' header.
+
+    Everything above the header is discarded — AJ's Angles, DK Splits,
+    trend matches, etc. are all noise for this parser.
+    """
+    raw_text = _normalize_apostrophes(raw_text)
     lines = raw_text.split("\n")
     start = -1
     for i, line in enumerate(lines):
@@ -50,7 +108,7 @@ def _extract_game_matchups(raw_text: str) -> dict[str, tuple[str, str]]:
     Parse game matchups from the head-to-head section.
 
     Pattern: '(559) CHICAGO at (560) PHILADELPHIA'
-    Returns dict mapping normalized team name → (away, home) tuple.
+    Returns dict mapping normalized team name → (pipeline_away, pipeline_home).
     Both teams are keys pointing to the same tuple.
     """
     matchups: dict[str, tuple[str, str]] = {}
@@ -58,10 +116,12 @@ def _extract_game_matchups(raw_text: str) -> dict[str, tuple[str, str]]:
         r"\(\d+\)\s+(.+?)\s+at\s+\(\d+\)\s+(.+?)$", re.MULTILINE
     )
     for m in pattern.finditer(raw_text):
-        away = m.group(1).strip()
-        home = m.group(2).strip()
-        matchups[away.upper()] = (away, home)
-        matchups[home.upper()] = (away, home)
+        away_raw = m.group(1).strip()
+        home_raw = m.group(2).strip()
+        away = _to_pipeline_name(away_raw)
+        home = _to_pipeline_name(home_raw)
+        matchups[away_raw.upper()] = (away, home)
+        matchups[home_raw.upper()] = (away, home)
     return matchups
 
 
@@ -70,23 +130,24 @@ def _extract_game_matchups(raw_text: str) -> dict[str, tuple[str, str]]:
 # ---------------------------------------------------------------------------
 
 # Spread: "1. CHICAGO +6.5 (+3.7)" or "Ratings Matches: 1. CHICAGO +6.5 (+3.7)"
-# Also handles "1(tie)." numbering
+# Also handles "1(tie)." numbering and missing closing paren: "(+3.7"
 _SPREAD_ENTRY_RE = re.compile(
     r"(?:Ratings\s+Matches?:\s*)?"
-    r"\d+(?:\(tie\))?\.?\s+"
+    r"\d+(?:\s*\(tie\))?\s*\.?\s+"
     r"([A-Z][A-Z\s]+?)\s+"          # team name (uppercase words)
     r"([+-]\d+\.?\d*)\s+"           # market line
-    r"\(([+-]?\d+\.?\d*)\)"         # edge in parens
+    r"\(([+-]\d+\.?\d*)\)?"         # edge in parens — MUST have +/- sign
 )
 
-# Total: "1. OKC-BOS OVER 218.5 (+2.3)"
+# Total: "1. OKC-BOS OVER 218.5 (+2.3)" — closing paren optional
 _TOTAL_ENTRY_RE = re.compile(
     r"(?:Ratings\s+Matches?:\s*)?"
-    r"\d+(?:\(tie\))?\.?\s+"
+    r"\d+(?:\s*\(tie\))?\s*\.?\s+"
     r"([A-Z][\w]*-[A-Z][\w]*)\s+"  # team abbrevs with dash
     r"(OVER|UNDER)\s+"
     r"(\d+\.?\d*)\s+"              # total line
-    r"\(([+-]?\d+\.?\d*)\)",       # edge in parens
+    r"\(([+-]\d+\.?\d*)\)?"        # edge in parens — MUST have +/- sign
+    ,
     re.IGNORECASE,
 )
 
@@ -107,21 +168,31 @@ def _parse_rating_entries(section: str) -> tuple[list[dict], list[dict]]:
             continue
 
         # Try totals first (more specific pattern)
+        total_matched = False
         for m in _TOTAL_ENTRY_RE.finditer(stripped):
+            edge_val = float(m.group(4))
+            # Sanity: edge should be small (< 20). If not, skip — likely a misparsed line number.
+            if abs(edge_val) > 20:
+                continue
             totals.append({
                 "teams_abbrev": m.group(1).strip().upper(),
                 "direction": m.group(2).lower(),
                 "line": float(m.group(3)),
-                "edge": float(m.group(4)),
+                "edge": edge_val,
             })
+            total_matched = True
 
         # Try spreads — but skip lines that already matched as totals
-        if not _TOTAL_ENTRY_RE.search(stripped):
+        if not total_matched:
             for m in _SPREAD_ENTRY_RE.finditer(stripped):
+                edge_val = float(m.group(3))
+                # Sanity: edge should be small (< 20). Skip absurd values.
+                if abs(edge_val) > 20:
+                    continue
                 spreads.append({
                     "team": m.group(1).strip(),
                     "line": float(m.group(2)),
-                    "edge": float(m.group(3)),
+                    "edge": edge_val,
                 })
 
     return spreads, totals
@@ -135,6 +206,24 @@ def _avg(values: list[float]) -> float:
     return sum(values) / len(values) if values else 0.0
 
 
+# Abbreviation → Makinen full city name (for resolving total entries like "OKC-BOS")
+_ABBREV_TO_FULL = {
+    "CHI": "CHICAGO", "PHI": "PHILADELPHIA", "ATL": "ATLANTA",
+    "DET": "DETROIT", "LAL": "LA LAKERS", "IND": "INDIANA",
+    "OKC": "OKLAHOMA CITY", "BOS": "BOSTON", "MIA": "MIAMI",
+    "CLE": "CLEVELAND", "SAS": "SAN ANTONIO", "SA": "SAN ANTONIO",
+    "MEM": "MEMPHIS", "WSH": "WASHINGTON", "WAS": "WASHINGTON",
+    "UTA": "UTAH", "HOU": "HOUSTON", "MIN": "MINNESOTA",
+    "MIL": "MILWAUKEE", "POR": "PORTLAND", "DAL": "DALLAS",
+    "DEN": "DENVER", "BKN": "BROOKLYN", "BK": "BROOKLYN",
+    "GSW": "GOLDEN STATE", "GS": "GOLDEN STATE",
+    "TOR": "TORONTO", "LAC": "LA CLIPPERS",
+    "SAC": "SACRAMENTO", "ORL": "ORLANDO", "NYK": "NEW YORK",
+    "NY": "NEW YORK", "NOP": "NEW ORLEANS", "NO": "NEW ORLEANS",
+    "PHX": "PHOENIX", "CHA": "CHARLOTTE",
+}
+
+
 def _resolve_team_name(
     abbrev: str, matchups: dict[str, tuple[str, str]]
 ) -> str | None:
@@ -143,22 +232,6 @@ def _resolve_team_name(
     # Direct match
     if abbrev_upper in matchups:
         return abbrev_upper
-    # Try common mappings
-    _ABBREV_TO_FULL = {
-        "CHI": "CHICAGO", "PHI": "PHILADELPHIA", "ATL": "ATLANTA",
-        "DET": "DETROIT", "LAL": "LA LAKERS", "IND": "INDIANA",
-        "OKC": "OKLAHOMA CITY", "BOS": "BOSTON", "MIA": "MIAMI",
-        "CLE": "CLEVELAND", "SAS": "SAN ANTONIO", "SA": "SAN ANTONIO",
-        "MEM": "MEMPHIS", "WSH": "WASHINGTON", "WAS": "WASHINGTON",
-        "UTA": "UTAH", "HOU": "HOUSTON", "MIN": "MINNESOTA",
-        "MIL": "MILWAUKEE", "POR": "PORTLAND", "DAL": "DALLAS",
-        "DEN": "DENVER", "BKN": "BROOKLYN", "BK": "BROOKLYN",
-        "GSW": "GOLDEN STATE", "GS": "GOLDEN STATE",
-        "TOR": "TORONTO", "LAC": "LA CLIPPERS",
-        "SAC": "SACRAMENTO", "ORL": "ORLANDO", "NYK": "NEW YORK",
-        "NY": "NEW YORK", "NOP": "NEW ORLEANS", "NO": "NEW ORLEANS",
-        "PHX": "PHOENIX", "CHA": "CHARLOTTE",
-    }
     full = _ABBREV_TO_FULL.get(abbrev_upper)
     if full and full in matchups:
         return full
@@ -200,9 +273,7 @@ def _build_projections(
         total_agg[key]["edges"].append(entry["edge"])
 
     # --- Build one TSIProjection per game ---
-    # Track games we've already created projections for
     game_projections: dict[tuple[str, str], TSIProjection] = {}
-    # Collect all tsi_spread implications per game to average at end
     game_spread_values: dict[tuple[str, str], list[float]] = defaultdict(list)
     bets: list[TSIBet] = []
 
@@ -211,8 +282,6 @@ def _build_projections(
         avg_edge = _avg(agg["edges"])
         market_line = agg["line"]
 
-        # The edge tells us: team is avg_edge points better than market implies
-        # Makinen's projected line for this team = market_line - avg_edge
         projected_line = market_line - avg_edge
 
         # Find opponent
@@ -230,20 +299,18 @@ def _build_projections(
                 tsi_total=0.0,
             )
 
-        # Compute tsi_spread implication: positive = team_left (away) favored
-        # Away team's projected line = -tsi_spread → tsi_spread = -projected_line
-        # Home team's projected line = +tsi_spread → tsi_spread = projected_line
-        if team_upper == away.upper():
+        if team_upper == _normalize_key(away).upper() or _to_pipeline_name(team_upper) == away:
             game_spread_values[game_key].append(-projected_line)
         else:
             game_spread_values[game_key].append(projected_line)
 
         # Create bet for strong edges
         if avg_edge >= 2.0:
+            pipeline_name = _to_pipeline_name(team_upper)
             bets.append(TSIBet(
-                teams=[team_upper.title()],
+                teams=[pipeline_name],
                 market="spread",
-                side=team_upper.title(),
+                side=pipeline_name,
                 line=market_line,
             ))
 
@@ -253,10 +320,6 @@ def _build_projections(
         market_total = agg["line"]
         direction = agg["direction"]
 
-        # tsi_total = what Makinen projects the actual total to be
-        # Over edge positive → Makinen projects higher → tsi_total = market + edge
-        # Under edge negative → Makinen projects lower → tsi_total = market + edge
-        # (edge sign already encodes direction)
         tsi_total = market_total + avg_edge
 
         # Resolve abbreviations to full names
@@ -275,7 +338,11 @@ def _build_projections(
 
         if game_key in game_projections:
             proj = game_projections[game_key]
-            proj.tsi_total = tsi_total
+            # Average if we already have a total from a different rating system
+            if proj.tsi_total != 0.0:
+                proj.tsi_total = (proj.tsi_total + tsi_total) / 2
+            else:
+                proj.tsi_total = tsi_total
         else:
             proj = TSIProjection(
                 date=date_str,
@@ -289,7 +356,7 @@ def _build_projections(
         # Create bet for strong total edges
         if abs(avg_edge) >= 2.0:
             bets.append(TSIBet(
-                teams=[away_full.title(), home_full.title()],
+                teams=[away_full, home_full],
                 market="total",
                 side=direction,
                 line=market_total,
@@ -318,10 +385,13 @@ def parse_makinen(raw_text: str) -> tuple[list[TSIProjection], list[TSIBet]]:
     Returns (projections, bets) — same types as parse_tsi() for pipeline
     compatibility.
     """
+    # Normalize curly apostrophes so header matching works on live site text
+    raw_text = _normalize_apostrophes(raw_text)
+
     # Step 1: Extract game matchups from head-to-head section
     matchups = _extract_game_matchups(raw_text)
 
-    # Step 2: Extract and parse the strength ratings section
+    # Step 2: Extract and parse the strength ratings section ONLY
     section = _extract_ratings_section(raw_text)
     if not section:
         return [], []

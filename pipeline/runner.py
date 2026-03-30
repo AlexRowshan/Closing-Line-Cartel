@@ -2,10 +2,10 @@
 Sharp Betting Analysis Pipeline — Game-Driven Architecture
 ------------------------------------------------------------
 Evaluates EVERY game on the board via independent scoring modules:
-  Module B — TSI: projection edge scoring (0–60, primary driver)
-  Module A — Splits: tiered DK/Circa overlap scoring (0–40)
+  Module B — TSI: projection edge scoring (0–65, primary driver)
+  Module A — Splits: tiered DK/Circa overlap scoring (0–35)
 Composite confidence_score = tsi_score + splits_score, clamped [0, 100].
-60/40 weighted system: TSI edge is the primary signal.
+65/35 weighted system: TSI edge is the primary signal.
 """
 
 import re
@@ -89,16 +89,18 @@ def _find_circa_only(dk_alerts: list[SplitAlert], circa_alerts: list[SplitAlert]
 
 def _splits_confidence(tier: int, diff: int) -> int:
     """
-    Splits score in range 0-40.
-    Tier base: T1=35, T2=28, T3=20, T4=14, T5=11, T6=7.
-    Circa-only gets a 4-point premium over DK-only, so a 20% Circa-only
-    signal grades roughly the same as a 40% DK-only signal.
-    Diff bonus: diff / 5.
+    Splits score in range 0-35.
+    Tier base: T1=32, T2=26, T3=20, T4=14, T5=12, T6=7.
+    Circa is weighted 2x DK: diff bonus = diff/5 for DK tiers, diff/2.5
+    for Circa tiers, so a 20% Circa diff ≈ 40% DK diff.
+    Circa-involved tiers: T1 (DK+Circa+Bovada), T2 (Circa+Bovada),
+    T3 (DK+Circa), T5 (Circa only).
     """
-    tier_bases = {1: 35, 2: 28, 3: 20, 4: 14, 5: 11, 6: 7}
+    tier_bases = {1: 32, 2: 26, 3: 20, 4: 14, 5: 12, 6: 7}
+    circa_tiers = {1, 2, 3, 5}
     tier_base = tier_bases.get(tier, 7)
-    diff_bonus = diff / 5
-    return max(0, min(40, round(tier_base + diff_bonus)))
+    diff_bonus = diff / 2.5 if tier in circa_tiers else diff / 5
+    return max(0, min(35, round(tier_base + diff_bonus)))
 
 
 def _score_splits(
@@ -180,7 +182,7 @@ def _score_tsi_for_alert(
             if tsi_line is not None:
                 tsi_edge = _calc_spread_edge(bovada_entry.bovada_line, tsi_line)
                 tsi_score = round(max(0, tsi_edge) * 10)
-        elif alert.market == "Total":
+        elif alert.market == "Total" and proj.tsi_total != 0.0:
             direction = bovada_entry.direction if bovada_entry.direction else (
                 "over" if alert.side.lower().startswith("over") else "under"
             )
@@ -193,7 +195,7 @@ def _score_tsi_for_alert(
             tsi_score += 15
             break
 
-    tsi_score = max(0, min(60, tsi_score))
+    tsi_score = max(0, min(65, tsi_score))
     return tsi_score, tsi_edge, is_tsi_bet
 
 
@@ -233,12 +235,12 @@ def _score_tsi_standalone(
                             score += 15
                             break
 
-                score = max(0, min(60, score))
+                score = max(0, min(65, score))
                 if score > 0:
                     results.append(("Spread", side, score, edge, is_tsi_bet, bovada_spread))
 
-    # Check total edge
-    if bovada_total and bovada_total.bovada_line:
+    # Check total edge — skip when tsi_total == 0.0 (no projection)
+    if bovada_total and bovada_total.bovada_line and proj.tsi_total != 0.0:
         over_edge = _calc_total_edge(bovada_total.bovada_line, proj.tsi_total, "over")
         under_edge = _calc_total_edge(bovada_total.bovada_line, proj.tsi_total, "under")
 
@@ -260,7 +262,7 @@ def _score_tsi_standalone(
                     if is_tsi_bet:
                         break
 
-            score = max(0, min(60, score))
+            score = max(0, min(65, score))
             if score > 0:
                 results.append(("Total", side, score, best_edge, is_tsi_bet, bovada_total))
 

@@ -18,7 +18,11 @@ def _translate_tsi_spread(proj: TSIProjection, target_team: str) -> float | None
     Positive TSI spread means team_left is favored, so:
       - team_left's line = -tsi_spread
       - team_right's line = +tsi_spread
+
+    Returns None when tsi_spread == 0.0 (no spread projection exists).
     """
+    if proj.tsi_spread == 0.0:
+        return None
     if _teams_match(target_team, proj.team_left):
         return -proj.tsi_spread
     if _teams_match(target_team, proj.team_right):
@@ -100,8 +104,9 @@ def derive_tsi_side(
         if tsi_line is not None:
             spread_edge = _calc_spread_edge(bovada_entry.bovada_line, tsi_line)
 
-    if bovada_entry.market == "total" and bovada_entry.bovada_line:
+    if bovada_entry.market == "total" and bovada_entry.bovada_line and proj.tsi_total != 0.0:
         # For totals, compute both over/under and take the positive edge
+        # Skip when tsi_total == 0.0 — means no total projection exists
         over_edge = _calc_total_edge(bovada_entry.bovada_line, proj.tsi_total, "over")
         under_edge = _calc_total_edge(bovada_entry.bovada_line, proj.tsi_total, "under")
         total_edge = max(over_edge, under_edge)
@@ -152,7 +157,7 @@ def compute_tsi_modifiers(
                 elif tsi_edge < -1.5:
                     alignment_mult = 0.5
 
-        elif alert.market == "Total":
+        elif alert.market == "Total" and proj.tsi_total != 0.0:
             direction = bovada_entry.direction if bovada_entry.direction else (
                 "over" if alert.side.lower().startswith("over") else "under"
             )

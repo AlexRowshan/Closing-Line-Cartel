@@ -60,6 +60,8 @@ def _normalize_team(name: str) -> str:
     # Normalize "UT <school>" → "texas <school>" so VSIN's
     # "Texas-Arlington" matches OddsTrader's "UT Arlington", etc.
     n = re.sub(r"^ut\s", "texas ", n)
+    # "Trailblazers" (one word) → "trail blazers" (two words)
+    n = n.replace("trailblazers", "trail blazers")
     return _TEAM_ABBREV.get(n, n)
 
 
