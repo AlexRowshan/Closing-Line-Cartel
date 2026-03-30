@@ -1,11 +1,11 @@
 """
-Sharp Betting Analysis Pipeline — Game-Driven Architecture
-------------------------------------------------------------
-Evaluates EVERY game on the board via independent scoring modules:
-  Module B — TSI: projection edge scoring (0–65, primary driver)
-  Module A — Splits: tiered DK/Circa overlap scoring (0–35)
-Composite confidence_score = tsi_score + splits_score, clamped [0, 100].
-65/35 weighted system: TSI edge is the primary signal.
+Sharp Betting Analysis Pipeline — Multiplicative Validation Architecture
+--------------------------------------------------------------------------
+Base score (0–65): Makinen mathematical edge (delta vs Bovada market line)
+Conviction multiplier: splits agreement scales base up to 100
+Contrarian penalty: splits disagreement penalizes below 35
+Standalone splits (no Makinen data): hard-capped at 35
+65/35 weighted system: Makinen edge is the primary signal, splits validate.
 """
 
 import re
@@ -28,6 +28,13 @@ from .tsi_match import (
 
 PROMPT_MAX_PLAYS = 5
 
+# --- Multiplicative scoring constants ---
+BASE_SCORE_MAX = 65
+MAX_SPREAD_EDGE = 6.5       # spread edge that yields max base score
+MAX_TOTAL_EDGE = 5.0        # total edge that yields max base score
+MAX_CORRELATED_MULT = 100.0 / BASE_SCORE_MAX  # ~1.538
+STANDALONE_SPLITS_CAP = 35
+
 
 @dataclass
 class Play:
@@ -47,7 +54,7 @@ class Play:
     confidence_score: int
     tsi_edge: float = 0.0
     is_tsi_bet: bool = False
-    source: str = ""               # "splits", "tsi", "splits+tsi"
+    source: str = ""               # "splits", "makinen", "splits+makinen"
 
     def to_dict(self) -> dict:
         return {
@@ -157,7 +164,34 @@ def _score_splits(
 
 
 # ---------------------------------------------------------------------------
-# Module B — TSI scoring
+# Conviction multiplier (splits → Makinen base modifier)
+# ---------------------------------------------------------------------------
+
+def _compute_conviction_multiplier(splits_score: int) -> float:
+    """
+    Splits-driven multiplier against Makinen base score (correlated case).
+    Range: 1.0 (weakest splits) → ~1.538 (T1 with max diff).
+    """
+    splits_strength = splits_score / 35.0
+    return 1.0 + splits_strength * (MAX_CORRELATED_MULT - 1.0)
+
+
+def _compute_contrarian_penalty(tsi_edge: float, market: str) -> float:
+    """
+    Penalty multiplier applied to splits score when Makinen disagrees.
+    Returns 0.5–1.0. Scales linearly with disagreement magnitude.
+    Spread: full penalty at |edge| = 5.0
+    Total:  full penalty at |edge| = 8.0
+    """
+    if market == "Spread":
+        penalty_ratio = min(1.0, abs(tsi_edge) / 5.0)
+    else:
+        penalty_ratio = min(1.0, abs(tsi_edge) / 8.0)
+    return 1.0 - penalty_ratio * 0.5
+
+
+# ---------------------------------------------------------------------------
+# Module B — TSI scoring (Makinen base score)
 # ---------------------------------------------------------------------------
 
 def _score_tsi_for_alert(
@@ -167,9 +201,8 @@ def _score_tsi_for_alert(
     bets: list[TSIBet],
 ) -> tuple[int, float, bool]:
     """
-    TSI score for a splits-based play. Returns (tsi_score, edge, is_tsi_bet).
-    Score range: 0-60. Linear scaling based on edge size.
-    Spread: edge * 10, Total: edge * 6, Explicit pick bonus: +15.
+    Makinen base score for a splits-based play. Returns (tsi_score, edge, is_tsi_bet).
+    Normalized scaling: edge / max_edge * 65. Explicit pick bonus: +15.
     """
     tsi_edge = 0.0
     tsi_score = 0
@@ -181,13 +214,13 @@ def _score_tsi_for_alert(
             tsi_line = _translate_tsi_spread(proj, team_name)
             if tsi_line is not None:
                 tsi_edge = _calc_spread_edge(bovada_entry.bovada_line, tsi_line)
-                tsi_score = round(max(0, tsi_edge) * 10)
+                tsi_score = round(max(0, tsi_edge / MAX_SPREAD_EDGE) * BASE_SCORE_MAX)
         elif alert.market == "Total" and proj.tsi_total != 0.0:
             direction = bovada_entry.direction if bovada_entry.direction else (
                 "over" if alert.side.lower().startswith("over") else "under"
             )
             tsi_edge = _calc_total_edge(bovada_entry.bovada_line, proj.tsi_total, direction)
-            tsi_score = round(max(0, tsi_edge) * 6)
+            tsi_score = round(max(0, tsi_edge / MAX_TOTAL_EDGE) * BASE_SCORE_MAX)
 
     for bet in bets:
         if _is_tsi_bet_match(alert, bet):
@@ -195,7 +228,7 @@ def _score_tsi_for_alert(
             tsi_score += 15
             break
 
-    tsi_score = max(0, min(65, tsi_score))
+    tsi_score = max(0, min(BASE_SCORE_MAX, tsi_score))
     return tsi_score, tsi_edge, is_tsi_bet
 
 
@@ -206,9 +239,9 @@ def _score_tsi_standalone(
     bets: list[TSIBet],
 ) -> list[tuple[str, str, int, float, bool, BovadaEntry | None]]:
     """
-    TSI scoring for games with NO split data.
+    Makinen scoring for games with NO split data (multiplier = 1.0).
     Returns list of (market, side, tsi_score, edge, is_tsi_bet, bovada_entry).
-    Linear scaling: Spread edge * 10, Total edge * 6. Explicit pick +15. Cap 70.
+    Normalized scaling: edge / max_edge * 65. Explicit pick +15. Cap 65.
     Only includes entries with positive edge.
     """
     results = []
@@ -219,7 +252,7 @@ def _score_tsi_standalone(
         if tsi_line is not None:
             edge = _calc_spread_edge(bovada_spread.bovada_line, tsi_line)
             if edge > 0:
-                score = round(edge * 10)
+                score = round(edge / MAX_SPREAD_EDGE * BASE_SCORE_MAX)
 
                 line_str = bovada_spread.bovada_line
                 if not line_str.startswith(("+", "-")):
@@ -235,7 +268,7 @@ def _score_tsi_standalone(
                             score += 15
                             break
 
-                score = max(0, min(65, score))
+                score = max(0, min(BASE_SCORE_MAX, score))
                 if score > 0:
                     results.append(("Spread", side, score, edge, is_tsi_bet, bovada_spread))
 
@@ -248,7 +281,7 @@ def _score_tsi_standalone(
         best_edge = max(over_edge, under_edge)
 
         if best_edge > 0:
-            score = round(best_edge * 6)
+            score = round(best_edge / MAX_TOTAL_EDGE * BASE_SCORE_MAX)
             side = f"{'Over' if best_direction == 'over' else 'Under'} {bovada_total.bovada_line}"
 
             is_tsi_bet = False
@@ -262,7 +295,7 @@ def _score_tsi_standalone(
                     if is_tsi_bet:
                         break
 
-            score = max(0, min(65, score))
+            score = max(0, min(BASE_SCORE_MAX, score))
             if score > 0:
                 results.append(("Total", side, score, best_edge, is_tsi_bet, bovada_total))
 
@@ -338,17 +371,23 @@ def run_pipeline(
             alert, entry, proj, tsi_bets
         )
 
-        confidence = min(100, tsi_score + splits_score)
-
-        # Veto penalty: TSI violently disagrees with splits-driven play
-        if tier is not None and proj is not None:
-            if alert.market == "Spread" and tsi_edge < -2.5:
-                confidence = confidence // 2
-            elif alert.market == "Total" and tsi_edge < -4.0:
-                confidence = confidence // 2
+        # Multiplicative scoring: route on proj existence + edge sign
+        if proj is not None and tsi_edge > 0:
+            # CORRELATED: Makinen base × splits conviction multiplier → up to 100
+            multiplier = _compute_conviction_multiplier(splits_score)
+            confidence = round(min(100, tsi_score * multiplier))
+            source = "splits+makinen"
+        elif proj is not None and tsi_edge < 0:
+            # CONTRARIAN: Makinen disagrees — penalize splits score, below 35
+            penalty = _compute_contrarian_penalty(tsi_edge, alert.market)
+            confidence = round(min(STANDALONE_SPLITS_CAP, splits_score * penalty))
+            source = "splits+makinen"
+        else:
+            # NO MAKINEN DATA or ZERO EDGE — standalone splits, cap 35
+            confidence = min(STANDALONE_SPLITS_CAP, splits_score)
+            source = "splits"
 
         confidence = max(0, confidence)
-        source = "splits+tsi" if tsi_score > 0 else "splits"
 
         play_key = _alert_key(alert)
         if play_key in seen_play_keys:
@@ -446,7 +485,7 @@ def run_pipeline(
                 confidence_score=max(0, min(100, tsi_score)),
                 tsi_edge=edge,
                 is_tsi_bet=is_bet,
-                source="tsi",
+                source="makinen",
             ))
 
     plays.sort(key=lambda p: p.confidence_score, reverse=True)
