@@ -3,7 +3,8 @@ Sharp Betting Analysis Pipeline — Multiplicative Validation Architecture
 --------------------------------------------------------------------------
 Base score (0–65): Makinen mathematical edge (delta vs Bovada market line)
 Conviction multiplier: splits agreement scales base up to 100
-Contrarian penalty: splits disagreement penalizes below 35
+Contrarian flip: when splits disagree with Makinen, flip to the Makinen-
+  preferred side and apply a splits-disagreement penalty (0–30%)
 Standalone splits (no Makinen data): hard-capped at 35
 65/35 weighted system: Makinen edge is the primary signal, splits validate.
 """
@@ -16,11 +17,14 @@ from parsers import TSIProjection, TSIBet
 from sport_config import get_config
 
 from .team_utils import (
-    _clean_team_name, _alert_key, _game_key, _normalize_team,
-    _teams_match, set_team_abbrev,
+    _clean_team_name, _alert_key, _alert_key_from_parts, _game_key,
+    _normalize_team, _teams_match, set_team_abbrev,
 )
 from .date_filter import _filter_future_games
-from .bovada_match import _get_bovada_entry_for_alert, _has_bovada_best
+from .bovada_match import (
+    _get_bovada_entry_for_alert, _has_bovada_best,
+    _get_opponent_bovada_spread, _get_opposite_direction_bovada_total,
+)
 from .tsi_match import (
     _calc_spread_edge, _calc_total_edge, _translate_tsi_spread,
     _find_tsi_projection, _is_tsi_bet_match, derive_tsi_side,
@@ -30,8 +34,8 @@ PROMPT_MAX_PLAYS = 5
 
 # --- Multiplicative scoring constants ---
 BASE_SCORE_MAX = 65
-MAX_SPREAD_EDGE = 6.5       # spread edge that yields max base score
-MAX_TOTAL_EDGE = 5.0        # total edge that yields max base score
+MAX_SPREAD_EDGE = 4.0       # spread edge that yields max base score
+MAX_TOTAL_EDGE = 6.5        # total edge that yields max base score
 MAX_CORRELATED_MULT = 100.0 / BASE_SCORE_MAX  # ~1.538
 STANDALONE_SPLITS_CAP = 35
 
@@ -188,6 +192,15 @@ def _compute_contrarian_penalty(tsi_edge: float, market: str) -> float:
     else:
         penalty_ratio = min(1.0, abs(tsi_edge) / 8.0)
     return 1.0 - penalty_ratio * 0.5
+
+
+def _compute_splits_disagreement_penalty(splits_score: int) -> float:
+    """
+    Penalty applied to Makinen base score when splits disagree (flipped play).
+    Stronger splits conviction → stronger penalty. Range: 0.70–1.0.
+    """
+    splits_strength = splits_score / 35.0
+    return 1.0 - splits_strength * 0.30
 
 
 # ---------------------------------------------------------------------------
@@ -378,7 +391,116 @@ def run_pipeline(
             confidence = round(min(100, tsi_score * multiplier))
             source = "splits+makinen"
         elif proj is not None and tsi_edge < 0:
-            # CONTRARIAN: Makinen disagrees — penalize splits score, below 35
+            # FLIP: Makinen disagrees — play the Makinen-preferred side instead
+            abs_edge = abs(tsi_edge)
+            flipped = False
+
+            if alert.market == "Spread":
+                opp_entry = _get_opponent_bovada_spread(alert, bovada_spreads)
+                if opp_entry is not None:
+                    flipped_tsi_score = round(abs_edge / MAX_SPREAD_EDGE * BASE_SCORE_MAX)
+                    flipped_team = opp_entry.team
+                    flipped_line_str = opp_entry.bovada_line
+                    if flipped_line_str and not flipped_line_str.startswith(("+", "-")):
+                        flipped_line_str = "+" + flipped_line_str
+                    flipped_side = f"{flipped_team} {flipped_line_str}"
+
+                    is_tsi_bet_flipped = False
+                    for bet in tsi_bets:
+                        if bet.market == "spread" and _teams_match(flipped_team, bet.side):
+                            is_tsi_bet_flipped = True
+                            flipped_tsi_score += 15
+                            break
+                    flipped_tsi_score = max(0, min(BASE_SCORE_MAX, flipped_tsi_score))
+
+                    penalty = _compute_splits_disagreement_penalty(splits_score)
+                    confidence = round(max(0, min(BASE_SCORE_MAX, flipped_tsi_score * penalty)))
+
+                    flipped_play_key = _alert_key_from_parts(
+                        alert.away_team, alert.home_team, "Spread", flipped_side
+                    )
+                    if flipped_play_key not in seen_play_keys:
+                        seen_play_keys.add(flipped_play_key)
+                        plays.append(Play(
+                            away_team=alert.away_team,
+                            home_team=alert.home_team,
+                            date=alert.date,
+                            market="Spread",
+                            side=flipped_side,
+                            handle_pct=alert.handle_pct,
+                            bets_pct=alert.bets_pct,
+                            diff=-alert.diff,
+                            bovada_line=opp_entry.bovada_line,
+                            bovada_odds=opp_entry.bovada_odds,
+                            bovada_direction="",
+                            is_bovada_best_price=opp_entry.is_best_price,
+                            conviction_tier=tier,
+                            confidence_score=confidence,
+                            tsi_edge=abs_edge,
+                            is_tsi_bet=is_tsi_bet_flipped,
+                            source="makinen",
+                        ))
+                    flipped = True
+
+            elif alert.market == "Total":
+                bovada_line_val = entry.bovada_line if entry else ""
+                if bovada_line_val:
+                    orig_dir = "over" if alert.side.lower().startswith("over") else "under"
+                    flipped_dir = "under" if orig_dir == "over" else "over"
+                    flipped_side = f"{'Under' if flipped_dir == 'under' else 'Over'} {bovada_line_val}"
+
+                    flipped_tsi_score = round(abs_edge / MAX_TOTAL_EDGE * BASE_SCORE_MAX)
+
+                    is_tsi_bet_flipped = False
+                    for bet in tsi_bets:
+                        if bet.market == "total" and bet.side == flipped_dir:
+                            for bt in bet.teams:
+                                if _teams_match(alert.away_team, bt) or _teams_match(alert.home_team, bt):
+                                    is_tsi_bet_flipped = True
+                                    flipped_tsi_score += 15
+                                    break
+                            if is_tsi_bet_flipped:
+                                break
+                    flipped_tsi_score = max(0, min(BASE_SCORE_MAX, flipped_tsi_score))
+
+                    penalty = _compute_splits_disagreement_penalty(splits_score)
+                    confidence = round(max(0, min(BASE_SCORE_MAX, flipped_tsi_score * penalty)))
+
+                    opp_entry = _get_opposite_direction_bovada_total(alert, bovada_totals)
+                    use_entry = opp_entry if opp_entry else entry
+
+                    flipped_play_key = _alert_key_from_parts(
+                        alert.away_team, alert.home_team, "Total", flipped_side
+                    )
+                    if flipped_play_key not in seen_play_keys:
+                        seen_play_keys.add(flipped_play_key)
+                        plays.append(Play(
+                            away_team=alert.away_team,
+                            home_team=alert.home_team,
+                            date=alert.date,
+                            market="Total",
+                            side=flipped_side,
+                            handle_pct=alert.handle_pct,
+                            bets_pct=alert.bets_pct,
+                            diff=-alert.diff,
+                            bovada_line=bovada_line_val,
+                            bovada_odds=use_entry.bovada_odds if use_entry else "",
+                            bovada_direction=flipped_dir,
+                            is_bovada_best_price=use_entry.is_best_price if use_entry else False,
+                            conviction_tier=tier,
+                            confidence_score=confidence,
+                            tsi_edge=abs_edge,
+                            is_tsi_bet=is_tsi_bet_flipped,
+                            source="makinen",
+                        ))
+                    flipped = True
+
+            if flipped:
+                # Also mark original splits key as seen to prevent duplicates
+                seen_play_keys.add(_alert_key(alert))
+                continue
+
+            # Fallback: couldn't flip (missing Bovada data) — penalize splits
             penalty = _compute_contrarian_penalty(tsi_edge, alert.market)
             confidence = round(min(STANDALONE_SPLITS_CAP, splits_score * penalty))
             source = "splits+makinen"

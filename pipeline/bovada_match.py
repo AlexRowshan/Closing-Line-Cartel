@@ -53,3 +53,26 @@ def _get_bovada_entry_for_alert(alert, bovada_spreads: dict, bovada_totals: dict
 def _has_bovada_best(alert, bovada_spreads: dict, bovada_totals: dict) -> bool:
     entry = _get_bovada_entry_for_alert(alert, bovada_spreads, bovada_totals)
     return entry is not None and entry.is_best_price
+
+
+def _get_opponent_bovada_spread(alert, bovada_spreads: dict):
+    """Find the Bovada spread entry for the opponent team in the same game."""
+    side_team = re.sub(r"\s+[+-][\d.]+$", "", alert.side).strip()
+    for _name, entry in bovada_spreads.items():
+        if _both_teams_match(alert, entry) and not _teams_match(side_team, entry.team):
+            return entry
+    return None
+
+
+def _get_opposite_direction_bovada_total(alert, bovada_totals: dict):
+    """Find the Bovada total entry with the opposite direction for the same game."""
+    orig_direction = "over" if alert.side.lower().startswith("over") else "under"
+    flipped_direction = "under" if orig_direction == "over" else "over"
+    for _name, entry in bovada_totals.items():
+        if entry.direction == flipped_direction and _both_teams_match(alert, entry):
+            return entry
+    # Fallback: any entry for the same game (direction may not be set)
+    for _name, entry in bovada_totals.items():
+        if _both_teams_match(alert, entry):
+            return entry
+    return None

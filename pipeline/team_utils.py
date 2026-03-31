@@ -100,3 +100,15 @@ def _alert_key(alert) -> tuple:
     else:
         direction = "over" if alert.side.lower().startswith("over") else "under"
         return (gk[0], gk[1], direction)
+
+
+def _alert_key_from_parts(away_team: str, home_team: str, market: str, side: str) -> tuple:
+    """Same as _alert_key but from raw strings instead of an alert object."""
+    gk = _game_key(away_team, home_team)
+    if market == "Spread":
+        raw_team = re.sub(r"\s+[+-][\d.]+$", "", side).strip()
+        team = _normalize_team(raw_team)
+        return (gk[0], gk[1], "spread", team)
+    else:
+        direction = "over" if side.lower().startswith("over") else "under"
+        return (gk[0], gk[1], direction)
