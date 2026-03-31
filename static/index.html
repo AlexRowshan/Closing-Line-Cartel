@@ -714,7 +714,7 @@
           <td>${escHtml(play.side)}</td>
           <td>${play.handle_pct != null ? play.handle_pct + '%' : '<span style="color:var(--muted)">--</span>'}</td>
           <td>${play.bets_pct != null ? play.bets_pct + '%' : '<span style="color:var(--muted)">--</span>'}</td>
-          <td>${play.diff != null ? (play.diff < 0 ? '<span class="diff-pill contra">' + play.diff + '%</span>' : '<span class="diff-pill">+' + play.diff + '%</span>') : '<span style="color:var(--muted)">--</span>'}</td>
+          <td>${play.diff != null ? (Number(play.diff) < 0 ? '<span class="diff-pill contra">' + play.diff + '%</span>' : '<span class="diff-pill">+' + play.diff + '%</span>') : '<span style="color:var(--muted)">--</span>'}</td>
           <td>${bovadaCell}</td>
           <td style="${tsiEdgeStyle}">${tsiEdgeStr}</td>
           <td>${tsiBetStr}</td>

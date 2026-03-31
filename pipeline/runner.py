@@ -36,7 +36,7 @@ PROMPT_MAX_PLAYS = 5
 BASE_SCORE_MAX = 65
 MAX_SPREAD_EDGE = 4.0       # spread edge that yields max base score
 MAX_TOTAL_EDGE = 6.5        # total edge that yields max base score
-MAX_CORRELATED_MULT = 100.0 / BASE_SCORE_MAX  # ~1.538
+MAX_CORRELATED_MULT = 1.85  # strong Circa agreement boosts Makinen base up to 85%
 STANDALONE_SPLITS_CAP = 35
 
 
@@ -197,10 +197,10 @@ def _compute_contrarian_penalty(tsi_edge: float, market: str) -> float:
 def _compute_splits_disagreement_penalty(splits_score: int) -> float:
     """
     Penalty applied to Makinen base score when splits disagree (flipped play).
-    Stronger splits conviction → stronger penalty. Range: 0.70–1.0.
+    Stronger splits conviction → stronger penalty. Range: 0.55–1.0.
     """
     splits_strength = splits_score / 35.0
-    return 1.0 - splits_strength * 0.30
+    return 1.0 - splits_strength * 0.45
 
 
 # ---------------------------------------------------------------------------
