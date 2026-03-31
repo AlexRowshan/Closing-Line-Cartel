@@ -409,11 +409,11 @@
 <body>
 
 <header>
-  <h1 id="page-title">Sharp CBB Analyzer</h1>
-  <p id="page-subtitle">College Basketball — VSIN splits + OddsTrader Bovada lines, filtered for sharp plays.</p>
+  <h1 id="page-title">Sharp NBA Analyzer</h1>
+  <p id="page-subtitle">NBA — VSIN splits + OddsTrader Bovada lines, filtered for sharp plays.</p>
   <div class="sport-tabs">
-    <button class="sport-tab active" data-sport="cbb" onclick="switchSport('cbb')">CBB</button>
-    <button class="sport-tab" data-sport="nba" onclick="switchSport('nba')">NBA</button>
+    <button class="sport-tab active" data-sport="nba" onclick="switchSport('nba')">NBA</button>
+    <button class="sport-tab" data-sport="cbb" onclick="switchSport('cbb')">CBB</button>
   </div>
 </header>
 
@@ -509,7 +509,7 @@
     },
   };
 
-  let _selectedSport = 'cbb';
+  let _selectedSport = 'nba';
   let eventSource = null;
   let _allPlays = [];
   let _promptCount = 0;
